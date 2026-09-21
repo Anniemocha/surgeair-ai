@@ -83,8 +83,38 @@ export async function handleInvocation(
     message,
   );
   let action: AgentCoreResponse["action"] = { type: "none" };
+  const explicitConfirmation =
+    /^\s*(?:yes[,\s]+)?confirm(?:\s+(?:the\s+)?rebooking)?[.!]?\s*$/i.test(
+      message,
+    );
 
-  if (
+  if (explicitConfirmation) {
+    const selectedFlight = surgeAirStore.getDashboard().selectedAlternative;
+    if (!selectedFlight) {
+      action = {
+        type: "rebooking_blocked",
+        message: "A pending rebooking selection is required before confirmation.",
+      };
+    } else {
+      const result = surgeAirStore.rebook(
+        BOOKING_REFERENCE,
+        selectedFlight,
+        true,
+      );
+      if ("error" in result) {
+        action = {
+          type: "rebooking_blocked",
+          message: result.error ?? "Unable to complete the rebooking.",
+        };
+      } else {
+        action = {
+          type: "rebooked",
+          flight: selectedFlight,
+          message: result.message,
+        };
+      }
+    }
+  } else if (
     interpretation.requiresTool === "searchAlternativeFlights" &&
     interpretation.intent === "find_alternative_flight"
   ) {
@@ -106,39 +136,16 @@ export async function handleInvocation(
       interpretation.selectedFlight,
     );
     if ("error" in pending) {
-      action = { type: "rebooking_blocked", message: pending.error };
+      action = {
+        type: "rebooking_blocked",
+        message: pending.error ?? "Unable to prepare the rebooking.",
+      };
     } else {
       action = {
         type: "rebooking_confirmation_required",
         selectedFlight: pending.selectedFlight,
         message: pending.message,
       };
-    }
-  } else if (
-    interpretation.requiresTool === "rebookFlight" ||
-    interpretation.intent === "confirm_rebooking"
-  ) {
-    const selectedFlight = surgeAirStore.getDashboard().selectedAlternative;
-    if (!selectedFlight) {
-      action = {
-        type: "rebooking_blocked",
-        message: "A pending rebooking selection is required before confirmation.",
-      };
-    } else {
-      const result = surgeAirStore.rebook(
-        BOOKING_REFERENCE,
-        selectedFlight,
-        true,
-      );
-      if ("error" in result) {
-        action = { type: "rebooking_blocked", message: result.error };
-      } else {
-        action = {
-          type: "rebooked",
-          flight: selectedFlight,
-          message: result.message,
-        };
-      }
     }
   }
 
@@ -201,7 +208,7 @@ function extractPassengerMessage(payload: unknown): string | null {
 function sendJson(
   response: ServerResponse,
   statusCode: number,
-  body: Record<string, unknown>,
+  body: unknown,
 ) {
   const encoded = JSON.stringify(body);
   response.writeHead(statusCode, {

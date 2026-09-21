@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "EH-Stcx5HRZtebkZ4Dsou"
+uri = "file://artifacts/api-server/agentcore-output/surgeair-agentcore.zip"
+type = "unspecified"
+title = "SurgeAir AgentCore Runtime"
+description = "Node.js 22 deployment ZIP for Amazon Bedrock AgentCore Runtime. Entry point: app.js."
+logical_id = "f7ca35c0-b9fc-4a3a-9ae9-6c7b1a48a495"
+content_hash = "sha256:6e80572e60534e7fef6d445701787b75a9876d4e789105b34fd68e8935cd8399"
+size = 170951
+mtime_ms = 1790002784904
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:2015dcf2-19ee-45cf-beb1-d307b9b24aa0/f7ca35c0-b9fc-4a3a-9ae9-6c7b1a48a495/9cdaf449-d784-4c0b-bc8e-e720f68772e0"
+storage_version_token = "1790003031382054"
+content_type = "application/octet-stream"

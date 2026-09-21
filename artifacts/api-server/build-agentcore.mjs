@@ -2,10 +2,9 @@ import { build } from "esbuild";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rm, mkdir } from "node:fs/promises";
+import { rm, mkdir, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import esbuildPluginPino from "esbuild-plugin-pino";
 
 globalThis.require = createRequire(import.meta.url);
 
@@ -13,6 +12,7 @@ const execFileAsync = promisify(execFile);
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 const outputDir = path.join(artifactDir, "agentcore-output");
 const bundlePath = path.join(outputDir, "app.js");
+const packagePath = path.join(outputDir, "package.json");
 const zipPath = path.join(outputDir, "surgeair-agentcore.zip");
 
 await rm(outputDir, { recursive: true, force: true });
@@ -28,6 +28,10 @@ await build({
   minify: true,
   sourcemap: false,
   logLevel: "info",
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    "process.env.AWS_BEARER_TOKEN_BEDROCK": "undefined",
+  },
   external: [
     "*.node",
     "fsevents",
@@ -38,8 +42,14 @@ await build({
     "bcrypt",
     "argon2",
   ],
-  plugins: [esbuildPluginPino({ transports: ["pino-pretty"] })],
 });
 
-await execFileAsync("zip", ["-q", "-j", zipPath, bundlePath]);
+await writeFile(packagePath, '{"type":"commonjs"}\n');
+await execFileAsync("zip", [
+  "-q",
+  "-j",
+  zipPath,
+  bundlePath,
+  packagePath,
+]);
 process.stdout.write(`Created ${zipPath}\n`);

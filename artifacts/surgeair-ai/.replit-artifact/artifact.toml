@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "SurgeAir AI"
+description = "An AI passenger operations dashboard for handling airline disruptions, finding alternative flights, and safely completing confirmed rebookings across simulated communication channels."
+version = "1.0.0"
+id = "artifacts/surgeair-ai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21036
+
+[services.development]
+run = "pnpm --filter @workspace/surgeair-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/surgeair-ai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/surgeair-ai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21036"
+BASE_PATH = "/"

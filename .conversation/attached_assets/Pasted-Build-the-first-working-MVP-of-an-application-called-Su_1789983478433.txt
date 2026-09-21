@@ -1,0 +1,240 @@
+Build the first working MVP of an application called **SurgeAir AI**.
+
+SurgeAir AI is an AI-powered omnichannel airline passenger assistant being developed for an AWS Communication Developer Services hackathon.
+
+## Core Demo Scenario
+
+A passenger is travelling:
+
+**Lisbon (LIS) → Edinburgh (EDI)**
+
+Passenger:
+
+* Name: Alex Morgan
+* Booking reference: SG4821
+* Original flight: SA204
+
+Flight SA204 has been delayed by 3 hours.
+
+The passenger tells SurgeAir AI:
+
+“I need to arrive in Edinburgh before 6 PM.”
+
+SurgeAir AI should retrieve the passenger's booking, understand the arrival-time constraint, search available alternative flights, present suitable options, ask the passenger to confirm their choice, and only then perform the simulated rebooking.
+
+## Mock Flight Data
+
+Create at least these flights:
+
+### SA204
+
+Route: LIS → EDI
+Status: Delayed
+Delay: 3 hours
+
+### SA218
+
+Route: LIS → EDI
+Departure: 11:30
+Arrival: 14:40
+Status: Available
+
+### SA226
+
+Route: LIS → EDI
+Departure: 13:10
+Arrival: 16:20
+Status: Available
+
+Use realistic but clearly simulated demo data.
+
+## Backend
+
+Create a clean API-based backend that can later be migrated to AWS Lambda and Amazon API Gateway.
+
+Implement these operations:
+
+1. `getBooking`
+
+   * Accept booking reference.
+   * Return passenger and booking information.
+
+2. `getFlightStatus`
+
+   * Accept flight number.
+   * Return flight status and disruption information.
+
+3. `searchAlternativeFlights`
+
+   * Accept origin, destination and passenger constraints.
+   * Search the mock flight inventory.
+   * Support an arrival-before constraint.
+
+4. `rebookFlight`
+
+   * Accept booking reference and new flight.
+   * DO NOT change a booking unless explicit passenger confirmation has been received.
+   * Update the mock booking after confirmation.
+
+5. `sendItinerary`
+
+   * For Milestone 1, simulate sending an itinerary.
+   * Structure this function so Amazon SES can replace the simulation later.
+
+## Conversation State
+
+Maintain a conversation object containing:
+
+* passenger ID
+* booking reference
+* current flight
+* origin
+* destination
+* current communication channel
+* previous communication channel
+* passenger request
+* detected intent
+* constraints
+* selected alternative flight
+* confirmation status
+* action status
+
+The architecture must allow this state to later be stored in Amazon DynamoDB so the same conversation can continue across SMS, WhatsApp, RCS and email.
+
+## Agent Logic
+
+Create an agent layer capable of following:
+
+UNDERSTAND
+→ RETRIEVE BOOKING
+→ CHECK FLIGHT
+→ EXTRACT CONSTRAINT
+→ SEARCH ALTERNATIVES
+→ PRESENT OPTIONS
+→ WAIT FOR PASSENGER SELECTION
+→ REQUEST CONFIRMATION
+→ WAIT FOR CONFIRMATION
+→ REBOOK
+→ GENERATE CONFIRMATION
+→ SEND ITINERARY
+
+Never perform a rebooking solely from an inferred preference.
+
+Require an explicit confirmation such as:
+
+“Yes, confirm.”
+
+before executing `rebookFlight`.
+
+## Dashboard
+
+Build a simple, professional airline operations dashboard.
+
+Header:
+
+**SurgeAir AI**
+*AI Passenger Operations*
+
+Display:
+
+### Active Disruption
+
+Flight SA204
+Lisbon → Edinburgh
+Status: Delayed 3 hours
+
+### Passenger
+
+Alex Morgan
+Booking: SG4821
+
+### Conversation Timeline
+
+Show simulated channel labels such as:
+
+SMS
+WhatsApp
+RCS
+Email
+
+Display passenger messages and SurgeAir AI responses chronologically.
+
+### Agent Activity
+
+Show actions such as:
+
+✓ Passenger identified
+✓ Booking retrieved
+✓ Arrival constraint detected
+✓ Alternative flights searched
+✓ Passenger confirmation received
+✓ Booking updated
+✓ Itinerary generated
+
+### Booking
+
+Clearly display:
+
+Original:
+SA204
+
+Updated:
+SA218
+
+Do not show SA218 as the confirmed booking until the rebooking action actually succeeds.
+
+## Technology
+
+Keep the application lightweight and easy to deploy.
+
+Design the backend so these components can later map to:
+
+* Amazon Bedrock
+* Amazon Bedrock AgentCore
+* AWS Lambda
+* Amazon API Gateway
+* Amazon DynamoDB
+* AWS End User Messaging
+* Amazon SES
+* Amazon SNS
+* Amazon CloudWatch
+
+Do NOT require those AWS services yet.
+
+For Milestone 1, simulate external communication services locally while keeping clean interfaces that can later be replaced with AWS implementations.
+
+## Important
+
+This is a hackathon prototype, not a real airline booking system.
+
+Clearly label simulated airline records where appropriate.
+
+Do not process real payments.
+
+Do not collect passport information.
+
+Do not expose API keys, credentials or secrets in frontend code.
+
+Create a README explaining:
+
+* What SurgeAir AI does
+* Problem being solved
+* Architecture
+* Local setup
+* Demo scenario
+* API operations
+* AWS migration plan
+
+The final Milestone 1 application should demonstrate this complete flow:
+
+SA204 delayed
+→ passenger contacted
+→ passenger needs Edinburgh before 18:00
+→ SurgeAir AI retrieves booking
+→ alternatives SA218 and SA226 found
+→ passenger selects SA218
+→ SurgeAir AI requests confirmation
+→ passenger confirms
+→ booking SG4821 changes SA204 → SA218
+→ confirmation generated
+→ itinerary sending simulated successfully.

@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: surgeair
+    description: SurgeAir passenger disruption operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,129 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [surgeair]
+      summary: Get the current disruption dashboard
+      responses:
+        "200":
+          description: Dashboard state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+  /bookings/{bookingReference}:
+    get:
+      operationId: getBooking
+      tags: [surgeair]
+      summary: Retrieve a passenger booking
+      parameters:
+        - name: bookingReference
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Booking details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "404":
+          description: Booking not found
+  /flights/{flightNumber}/status:
+    get:
+      operationId: getFlightStatus
+      tags: [surgeair]
+      summary: Get flight status and disruption information
+      parameters:
+        - name: flightNumber
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Flight status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+        "404":
+          description: Flight not found
+  /flights/alternatives:
+    get:
+      operationId: searchAlternativeFlights
+      tags: [surgeair]
+      summary: Search available alternative flights
+      parameters:
+        - name: origin
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: destination
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: arrivalBefore
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: "^[0-2][0-9]:[0-5][0-9]$"
+      responses:
+        "200":
+          description: Matching alternative flights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Flight"
+  /bookings/rebook:
+    post:
+      operationId: rebookFlight
+      tags: [surgeair]
+      summary: Rebook a passenger after explicit confirmation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RebookInput"
+      responses:
+        "200":
+          description: Updated booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RebookResult"
+        "400":
+          description: Rebooking requires explicit confirmation
+        "404":
+          description: Booking or flight not found
+  /itinerary/send:
+    post:
+      operationId: sendItinerary
+      tags: [surgeair]
+      summary: Simulate sending an updated itinerary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItineraryInput"
+      responses:
+        "200":
+          description: Simulated send result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItineraryResult"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +158,90 @@ components:
           type: string
       required:
         - status
+    Flight:
+      type: object
+      required: [flightNumber, origin, destination, departure, arrival, status, delayMinutes]
+      properties:
+        flightNumber: { type: string }
+        origin: { type: string }
+        destination: { type: string }
+        departure: { type: string }
+        arrival: { type: string }
+        status: { type: string }
+        delayMinutes: { type: integer }
+        gate: { type: ["string", "null"] }
+        aircraft: { type: ["string", "null"] }
+    Booking:
+      type: object
+      required: [bookingReference, passengerId, passengerName, currentFlight, origin, destination]
+      properties:
+        bookingReference: { type: string }
+        passengerId: { type: string }
+        passengerName: { type: string }
+        currentFlight: { $ref: "#/components/schemas/Flight" }
+        origin: { type: string }
+        destination: { type: string }
+        status: { type: string }
+    Activity:
+      type: object
+      required: [id, label, detail, status, timestamp]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        detail: { type: string }
+        status: { type: string }
+        timestamp: { type: string }
+    ConversationMessage:
+      type: object
+      required: [id, channel, sender, text, timestamp]
+      properties:
+        id: { type: string }
+        channel: { type: string }
+        sender: { type: string }
+        text: { type: string }
+        timestamp: { type: string }
+    Dashboard:
+      type: object
+      required: [booking, disruption, messages, activities, selectedAlternative, confirmationStatus, actionStatus]
+      properties:
+        booking: { $ref: "#/components/schemas/Booking" }
+        disruption: { $ref: "#/components/schemas/Flight" }
+        messages:
+          type: array
+          items: { $ref: "#/components/schemas/ConversationMessage" }
+        activities:
+          type: array
+          items: { $ref: "#/components/schemas/Activity" }
+        selectedAlternative:
+          type: ["string", "null"]
+        confirmationStatus: { type: string }
+        actionStatus: { type: string }
+    RebookInput:
+      type: object
+      required: [bookingReference, newFlight, confirmation]
+      properties:
+        bookingReference: { type: string }
+        newFlight: { type: string }
+        confirmation: { type: boolean }
+    RebookResult:
+      type: object
+      required: [booking, actionStatus, message]
+      properties:
+        booking: { $ref: "#/components/schemas/Booking" }
+        actionStatus: { type: string }
+        message: { type: string }
+    ItineraryInput:
+      type: object
+      required: [bookingReference, channel]
+      properties:
+        bookingReference: { type: string }
+        channel: { type: string }
+    ItineraryResult:
+      type: object
+      required: [sent, channel, message, sentAt]
+      properties:
+        sent: { type: boolean }
+        channel: { type: string }
+        message: { type: string }
+        sentAt: { type: string }
 

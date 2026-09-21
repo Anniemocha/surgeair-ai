@@ -8,6 +8,10 @@ import {
   getAwsReadinessConfig,
   integrationReadiness,
 } from "../config/aws";
+import {
+  verifiedIntegrationProfile,
+  verifiedReadinessEvidence,
+} from "../config/verified-readiness-evidence";
 import { InMemoryConversationRepository } from "../conversation/conversation-repository";
 import { InMemoryEventStore, type SurgeAirEventType } from "../events/event-store";
 import { createModelProvider } from "../models/model-provider-factory";
@@ -180,20 +184,25 @@ const conversationId = "conv-sg4821-disruption";
 const awsReadinessConfig = getAwsReadinessConfig();
 const readinessStore = new JsonReadinessStateStore(
   resolve(process.cwd(), "data/integration-readiness.json"),
-  {
-    bedrock: awsReadinessConfig.verified.bedrock,
-    agentCore: awsReadinessConfig.verified.agentCore,
-    sms: awsReadinessConfig.verified.sms,
-    ses: awsReadinessConfig.verified.ses,
-  },
+  verifiedReadinessEvidence,
 );
 const operationalLogger = new LocalOperationalLogger({
-  bedrockVerified: awsReadinessConfig.verified.bedrock,
-  bedrockModelId: awsReadinessConfig.bedrockModelId,
+  bedrockVerified:
+    awsReadinessConfig.verified.bedrock ||
+    verifiedReadinessEvidence.bedrock?.status === "CONNECTED",
+  bedrockModelId:
+    awsReadinessConfig.bedrockModelId ??
+    verifiedIntegrationProfile.bedrockModelId,
   region: awsReadinessConfig.region,
-  smsVerified: awsReadinessConfig.verified.sms,
-  sesVerified: awsReadinessConfig.verified.ses,
-  agentCoreVerified: awsReadinessConfig.verified.agentCore,
+  smsVerified:
+    awsReadinessConfig.verified.sms ||
+    verifiedReadinessEvidence.sms?.status === "CONNECTED",
+  sesVerified:
+    awsReadinessConfig.verified.ses ||
+    verifiedReadinessEvidence.ses?.status === "CONNECTED",
+  agentCoreVerified:
+    awsReadinessConfig.verified.agentCore ||
+    verifiedReadinessEvidence.agentCore?.status === "CONNECTED",
   store: readinessStore,
 });
 const smsChannel = new SmsChannel(operationalLogger, {

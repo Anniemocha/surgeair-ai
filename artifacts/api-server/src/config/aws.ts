@@ -50,7 +50,7 @@ export function getAwsReadinessConfig(): AwsReadinessConfig {
     process.env.SES_FROM_ADDRESS?.trim() ||
     null;
   return {
-    region: process.env.AWS_REGION?.trim() || "eu-west-1",
+    region: process.env.AWS_REGION?.trim() || "eu-north-1",
     bedrockModelId: process.env.BEDROCK_MODEL_ID ?? null,
     agentCoreRuntimeName:
       process.env.AGENTCORE_RUNTIME_NAME?.trim() || "surgeair_ai_agent",

@@ -198,9 +198,9 @@ The operations dashboard exposes backend-managed readiness states:
 - `NOT VERIFIED`
 - `ERROR`
 
-Readiness is not only cosmetic frontend state. The API server records verification evidence in durable JSON-backed storage and restores it across server restarts. Conversation and event state remain controlled demonstration state in memory.
+Readiness is not only cosmetic frontend state. The API server initializes from committed backend evidence for integrations that were genuinely verified before the hackathon deployment. Loading this evidence does not perform a new AWS operation or fabricate a verification timestamp.
 
-For multi-instance production deployment, shared durable storage such as DynamoDB would be appropriate. DynamoDB is not currently used as the live conversation store in this hackathon build.
+Runtime success or failure supersedes the bootstrap evidence and is written to a JSON runtime overlay when the filesystem is writable. Replit Autoscale filesystems are ephemeral, so the committed evidence remains the safe initialization source after a restart or republish. For multi-instance production deployment, shared durable storage such as DynamoDB would be appropriate. DynamoDB is not currently used as the live conversation or readiness store in this hackathon build.
 
 ## Observability
 
@@ -388,7 +388,7 @@ These are boundaries of the current hackathon implementation:
 - WhatsApp is simulated.
 - RCS is simulated.
 - SMS uses the AWS Simulator rather than carrier delivery.
-- Readiness evidence uses local durable JSON storage.
+- Readiness initializes from committed prior-verification evidence and uses a best-effort local JSON runtime overlay; Autoscale runtime files are not durable across restarts.
 - Conversation and event state use controlled in-memory demonstration data.
 - Airline inventory and booking records are controlled demonstration data.
 - No production airline reservation-system integration is claimed.

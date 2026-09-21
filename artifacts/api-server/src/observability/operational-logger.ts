@@ -13,6 +13,8 @@ export type OperationalLogType =
   | "channel_transition"
   | "model_request"
   | "bedrock_invocation_failed"
+  | "agentcore_invocation_succeeded"
+  | "agentcore_invocation_failed"
   | "sms_send_started"
   | "sms_send_succeeded"
   | "sms_send_failed"
@@ -143,6 +145,14 @@ export class LocalOperationalLogger implements OperationalLogger {
     type: OperationalLogType,
     details: Record<string, string | number | boolean | null>,
   ) {
+    if (type === "agentcore_invocation_succeeded") {
+      this.setStatus("agentCore", "CONNECTED", "runtime-success");
+      return;
+    }
+    if (type === "agentcore_invocation_failed") {
+      this.setStatus("agentCore", "ERROR", "runtime-failure");
+      return;
+    }
     if (type === "sms_send_succeeded") {
       this.setStatus("sms", "CONNECTED", "runtime-success");
       return;

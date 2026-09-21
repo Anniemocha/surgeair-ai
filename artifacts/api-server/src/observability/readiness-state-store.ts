@@ -5,6 +5,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { logger } from "../lib/logger";
 
 export type IntegrationReadinessKey =
   | "bedrock"
@@ -17,13 +18,18 @@ export type IntegrationVerificationStatus =
   | "ERROR";
 export type ReadinessEvidenceSource =
   | "verified-live-operation"
+  | "previous-live-runtime-verification"
   | "runtime-success"
   | "runtime-failure";
 
-interface StoredReadinessEntry {
+export interface StoredReadinessEntry {
   status: IntegrationVerificationStatus;
   source: ReadinessEvidenceSource;
 }
+
+export type ReadinessSeed = Partial<
+  Record<IntegrationReadinessKey, StoredReadinessEntry>
+>;
 
 interface StoredReadinessDocument {
   version: 1;
@@ -46,22 +52,16 @@ export class JsonReadinessStateStore implements ReadinessStateStore {
 
   constructor(
     private readonly filePath: string,
-    verifiedBaselines: Partial<Record<IntegrationReadinessKey, boolean>> = {},
+    seed: ReadinessSeed = {},
   ) {
-    this.state = this.read();
-    let changed = false;
-    for (const [key, verified] of Object.entries(verifiedBaselines) as Array<
-      [IntegrationReadinessKey, boolean]
-    >) {
-      if (verified && !this.state.integrations[key]) {
-        this.state.integrations[key] = {
-          status: "CONNECTED",
-          source: "verified-live-operation",
-        };
-        changed = true;
-      }
-    }
-    if (changed) this.persist();
+    const runtimeState = this.read();
+    this.state = {
+      version: 1,
+      integrations: {
+        ...seed,
+        ...runtimeState.integrations,
+      },
+    };
   }
 
   get(key: IntegrationReadinessKey) {
@@ -92,12 +92,22 @@ export class JsonReadinessStateStore implements ReadinessStateStore {
   }
 
   private persist() {
-    mkdirSync(dirname(this.filePath), { recursive: true });
-    const temporaryPath = `${this.filePath}.tmp`;
-    writeFileSync(temporaryPath, `${JSON.stringify(this.state, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    renameSync(temporaryPath, this.filePath);
+    try {
+      mkdirSync(dirname(this.filePath), { recursive: true });
+      const temporaryPath = `${this.filePath}.tmp`;
+      writeFileSync(temporaryPath, `${JSON.stringify(this.state, null, 2)}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+      renameSync(temporaryPath, this.filePath);
+    } catch (error) {
+      logger.warn(
+        {
+          errorName: error instanceof Error ? error.name : "UnknownError",
+          persistenceMode: "memory-only",
+        },
+        "Integration readiness runtime overlay could not be persisted",
+      );
+    }
   }
 }

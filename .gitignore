@@ -2,6 +2,7 @@
 
 # compiled output
 dist
+artifacts/api-server/data/integration-readiness.json
 tmp
 out-tsc
 *.tsbuildinfo

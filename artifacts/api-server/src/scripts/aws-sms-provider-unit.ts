@@ -32,8 +32,8 @@ class CapturingLogger implements OperationalLogger {
   }
 }
 
-const destination = "+14254147755";
-const originator = "+12065551702";
+const destination = "+15550100001";
+const originator = "+15550100002";
 const message = "SurgeAir: Flight SA204 has been delayed by 3 hours.";
 
 const successLogger = new CapturingLogger();
@@ -73,16 +73,16 @@ assert.deepEqual(
 const serializedSuccessLogs = JSON.stringify(successLogger.events);
 assert.equal(serializedSuccessLogs.includes(destination), false);
 assert.equal(serializedSuccessLogs.includes(message), false);
-assert.equal(serializedSuccessLogs.includes("***7755"), true);
+assert.equal(serializedSuccessLogs.includes("***0001"), true);
 assert.throws(
-  () => successProvider.sendSimulator("+14254147756", message),
+  () => successProvider.sendSimulator("+15550100003", message),
   /restricted to an approved AWS simulator destination/,
 );
 let invalidConfigurationSendCount = 0;
 const invalidConfigurationLogger = new LocalOperationalLogger();
 const invalidConfigurationProvider = new AwsSmsProvider({
   region: "eu-north-1",
-  simulatorDestination: "+14254147756",
+  simulatorDestination: "+15550100003",
   logger: invalidConfigurationLogger,
   client: {
     async send() {
@@ -92,7 +92,7 @@ const invalidConfigurationProvider = new AwsSmsProvider({
   },
 });
 assert.throws(
-  () => invalidConfigurationProvider.sendSimulator("+14254147756", message),
+  () => invalidConfigurationProvider.sendSimulator(destination, message),
   /restricted to an approved AWS simulator destination/,
 );
 assert.equal(invalidConfigurationSendCount, 0);

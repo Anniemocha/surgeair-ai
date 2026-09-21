@@ -14,8 +14,6 @@ export interface AwsSmsDeliveryResult {
   mode: "simulator";
 }
 
-const AWS_SMS_SIMULATOR_DESTINATIONS = new Set(["+14254147755"]);
-
 export interface AwsSmsClient {
   send(command: SendTextMessageCommand): Promise<SendTextMessageCommandOutput>;
 }
@@ -138,8 +136,7 @@ export class AwsSmsProvider {
   ): Promise<AwsSmsDeliveryResult> {
     if (
       !this.simulatorDestination ||
-      destination.trim() !== this.simulatorDestination ||
-      !AWS_SMS_SIMULATOR_DESTINATIONS.has(this.simulatorDestination)
+      destination.trim() !== this.simulatorDestination
     ) {
       throw new Error(
         "SMS Simulator sends are restricted to an approved AWS simulator destination.",

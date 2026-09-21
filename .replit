@@ -18,3 +18,9 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+AWS_REGION = "eu-north-1"
+BEDROCK_MODEL_ID = "eu.amazon.nova-2-lite-v1:0"

@@ -3,7 +3,7 @@
   "integrations": {
     "bedrock": {
       "status": "CONNECTED",
-      "source": "verified-live-operation"
+      "source": "runtime-success"
     },
     "agentCore": {
       "status": "CONNECTED",
@@ -15,7 +15,7 @@
     },
     "ses": {
       "status": "CONNECTED",
-      "source": "verified-live-operation"
+      "source": "runtime-success"
     }
   }
 }

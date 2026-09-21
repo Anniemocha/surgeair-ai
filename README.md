@@ -2,6 +2,10 @@
 
 > One conversation. Every channel. A smoother journey.
 
+**Live Demo:** [https://surge-air-ai-mvp.replit.app](https://surge-air-ai-mvp.replit.app)
+
+This is the Replit-hosted hackathon deployment.
+
 SurgeAir AI is an agentic, omnichannel airline passenger-assistance system built for the AWS Communication Developer Services hackathon. It helps a passenger recover from a flight disruption while preserving context across channels and keeping consequential booking actions behind an explicit-confirmation gate.
 
 The demonstration focuses on one disruption and rebooking journey:
@@ -143,6 +147,17 @@ Provider abstractions keep channel behavior separate from the orchestration laye
 | RCS | SIMULATED | Demo Adapter |
 
 `CONNECTED` means that a genuine AWS runtime operation or verified runtime evidence is available for the integration. `SIMULATED` means that the application demonstrates the channel behavior locally without claiming a live channel operation.
+
+The published Replit deployment was validated with this readiness state:
+
+- Amazon Bedrock — **CONNECTED** — Nova 2 Lite • eu-north-1
+- Bedrock AgentCore — **CONNECTED** — Live Runtime
+- AWS End User Messaging SMS — **CONNECTED** — AWS Simulator • eu-north-1
+- Amazon SES — **CONNECTED** — Live Email • eu-north-1
+- WhatsApp — **SIMULATED**
+- RCS — **SIMULATED**
+
+SMS validation used the AWS SMS Simulator and does not claim delivery through a physical carrier.
 
 ## Agent Tools
 
@@ -414,7 +429,9 @@ The value is not only chatbot responses. The agent maintains state across a pass
 
 ## Demo
 
-Use the running Replit preview to demonstrate the canonical flow:
+**Live Demo:** [https://surge-air-ai-mvp.replit.app](https://surge-air-ai-mvp.replit.app)
+
+Use the published Replit-hosted hackathon deployment to demonstrate the canonical flow:
 
 1. Show the SA204 disruption and initial SMS notification.
 2. Enter the arrival-before-18:00 constraint.
@@ -427,4 +444,4 @@ Demo video: Coming soon
 
 ## License
 
-MIT, as declared in the root package metadata. No standalone `LICENSE` file is currently present.
+The project package metadata declares the MIT license. No standalone `LICENSE` file currently exists.

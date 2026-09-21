@@ -62,6 +62,7 @@ export class AwsSmsProvider {
       options.client ??
       new PinpointSMSVoiceV2Client({
         region: this.region,
+        maxAttempts: 1,
       });
   }
 

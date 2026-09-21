@@ -13,21 +13,23 @@ import {
   SendItineraryResponse,
 } from "@workspace/api-zod";
 import {
-  SimulatedItinerarySender,
   surgeAirStore,
-  type Channel,
+  type BookingRecord,
+  type FlightRecord,
 } from "../surgeair/domain";
+import { airlineTools } from "../surgeair/airline-tools";
 
 const router: IRouter = Router();
-const itinerarySender = new SimulatedItinerarySender();
-
 router.get("/dashboard", (_req, res) => {
   res.json(GetDashboardResponse.parse(surgeAirStore.getDashboard()));
 });
 
-router.get("/bookings/:bookingReference", (req, res) => {
+router.get("/bookings/:bookingReference", async (req, res) => {
   const { bookingReference } = GetBookingParams.parse(req.params);
-  const booking = surgeAirStore.getBooking(bookingReference);
+  const booking = await airlineTools.execute<BookingRecord | null>(
+    "getBooking",
+    { bookingReference },
+  );
 
   if (!booking) {
     res.status(404).json({ error: "Booking not found." });
@@ -37,20 +39,22 @@ router.get("/bookings/:bookingReference", (req, res) => {
   res.json(GetBookingResponse.parse(booking));
 });
 
-router.get("/flights/alternatives", (req, res) => {
+router.get("/flights/alternatives", async (req, res) => {
   const { origin, destination, arrivalBefore } =
     SearchAlternativeFlightsQueryParams.parse(req.query);
-  const alternatives = surgeAirStore.searchAlternatives(
-    origin,
-    destination,
-    arrivalBefore,
+  const alternatives = await airlineTools.execute<FlightRecord[]>(
+    "searchAlternativeFlights",
+    { origin, destination, arrivalBefore },
   );
   res.json(SearchAlternativeFlightsResponse.parse(alternatives));
 });
 
-router.get("/flights/:flightNumber/status", (req, res) => {
+router.get("/flights/:flightNumber/status", async (req, res) => {
   const { flightNumber } = GetFlightStatusParams.parse(req.params);
-  const flight = surgeAirStore.getFlight(flightNumber);
+  const flight = await airlineTools.execute<FlightRecord | null>(
+    "getFlightStatus",
+    { flightNumber },
+  );
 
   if (!flight) {
     res.status(404).json({ error: "Flight not found." });
@@ -60,13 +64,11 @@ router.get("/flights/:flightNumber/status", (req, res) => {
   res.json(GetFlightStatusResponse.parse(flight));
 });
 
-router.post("/bookings/rebook", (req, res) => {
+router.post("/bookings/rebook", async (req, res) => {
   const input = RebookFlightBody.parse(req.body);
-  const result = surgeAirStore.rebook(
-    input.bookingReference,
-    input.newFlight,
-    input.confirmation,
-  );
+  const result = await airlineTools.execute<
+    ReturnType<typeof surgeAirStore.rebook>
+  >("rebookFlight", input);
 
   if (!("booking" in result)) {
     const error = result.error ?? "Unable to rebook flight.";
@@ -79,16 +81,18 @@ router.post("/bookings/rebook", (req, res) => {
 
 router.post("/itinerary/send", async (req, res) => {
   const input = SendItineraryBody.parse(req.body);
-  const booking = surgeAirStore.getBooking(input.bookingReference);
-
-  if (!booking) {
+  const result = await airlineTools.execute<
+    {
+      sent: boolean;
+      channel: string;
+      message: string;
+      sentAt: string;
+    } | null
+  >("sendItinerary", input);
+  if (!result) {
     res.status(404).json({ error: "Booking not found." });
     return;
   }
-
-  const channel = input.channel as Channel;
-  const result = await itinerarySender.send(booking, channel);
-  surgeAirStore.markItinerarySent(channel);
   res.json(SendItineraryResponse.parse(result));
 });
 

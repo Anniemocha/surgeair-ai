@@ -67,7 +67,19 @@ export const GetDashboardResponse = zod.object({
 })),
   "selectedAlternative": zod.string().nullable(),
   "confirmationStatus": zod.string(),
-  "actionStatus": zod.string()
+  "actionStatus": zod.string(),
+  "orchestration": zod.object({
+  "conversationId": zod.string(),
+  "currentChannel": zod.string(),
+  "previousChannel": zod.string().nullable(),
+  "currentIntent": zod.string().nullable(),
+  "currentAgentState": zod.string(),
+  "lastToolCalled": zod.string().nullable()
+}),
+  "integrationStatus": zod.array(zod.object({
+  "service": zod.string(),
+  "status": zod.string()
+}))
 })
 
 

@@ -1,0 +1,646 @@
+Upgrade the existing working **SurgeAir AI** application to prepare it for later AWS integration.
+
+IMPORTANT:
+
+Do NOT rebuild the application from scratch.
+
+Do NOT remove or break any currently working functionality.
+
+Preserve the existing frontend, backend, passenger messaging simulator, airline operations dashboard, API operations, TypeScript configuration, and demo workflow.
+
+The existing demo must continue working after this upgrade.
+
+# EXISTING DEMO
+
+Passenger:
+
+**Draymond Hillsend**
+
+Booking:
+
+**SG4821**
+
+Route:
+
+**Lisbon (LIS) → Edinburgh (EDI)**
+
+Original flight:
+
+**SA204**
+
+Status:
+
+**Delayed by 3 hours**
+
+Alternative flights:
+
+**SA218**
+Departure: 11:30
+Arrival: 14:40
+
+**SA226**
+Departure: 13:10
+Arrival: 16:20
+
+Passenger requirement:
+
+“I need to arrive in Edinburgh before 6 PM.”
+
+Existing workflow:
+
+SA204 disruption
+
+→ SMS notification
+
+→ passenger responds
+
+→ booking retrieved
+
+→ arrival-before-18:00 constraint detected
+
+→ SA218 and SA226 found
+
+→ alternatives presented
+
+→ passenger selects SA218
+
+→ explicit confirmation requested
+
+→ passenger confirms
+
+→ SG4821 changes SA204 → SA218
+
+→ confirmation generated
+
+→ itinerary email simulated.
+
+This entire workflow MUST continue to function.
+
+# OBJECTIVE
+
+Refactor the application architecture so SurgeAir AI can later integrate cleanly with:
+
+* AWS End User Messaging SMS
+* AWS End User Messaging RCS
+* AWS End User Messaging Social / WhatsApp
+* Amazon Simple Email Service (SES)
+* Amazon Bedrock
+* Amazon Bedrock AgentCore
+* AWS Lambda
+* Amazon API Gateway
+* Amazon DynamoDB
+* Amazon SNS
+* Amazon CloudWatch
+
+Use the architectural concepts demonstrated by AWS's generative-AI Chat Orchestrator and End User Messaging sample applications.
+
+Do NOT require AWS credentials yet.
+
+All AWS integrations should remain behind interfaces/adapters with simulated local implementations.
+
+# 1. CREATE A MESSAGE ORCHESTRATION LAYER
+
+Introduce a dedicated message orchestrator between communication channels and the SurgeAir AI agent.
+
+Conceptually:
+
+Passenger
+
+→ Channel Adapter
+
+→ Message Orchestrator
+
+→ Conversation Store
+
+→ SurgeAir Agent
+
+→ Airline Tools
+
+→ Response
+
+→ Channel Adapter
+
+→ Passenger
+
+The orchestrator should normalize incoming messages regardless of channel.
+
+Use a normalized message structure similar to:
+
+{
+"messageId": "...",
+"conversationId": "...",
+"passengerId": "...",
+"bookingReference": "SG4821",
+"channel": "sms",
+"direction": "inbound",
+"content": "...",
+"timestamp": "..."
+}
+
+Supported channel values:
+
+* sms
+* whatsapp
+* rcs
+* email
+
+# 2. CREATE CHANNEL ADAPTERS
+
+Create clean interfaces for:
+
+SmsChannel
+
+WhatsAppChannel
+
+RcsChannel
+
+EmailChannel
+
+Each adapter should expose operations such as:
+
+sendMessage()
+
+receiveMessage()
+
+For Milestone 1.5, use simulated implementations.
+
+Structure them so they can later be replaced by:
+
+SmsChannel
+→ AWS End User Messaging SMS
+
+WhatsAppChannel
+→ AWS End User Messaging Social
+
+RcsChannel
+→ AWS End User Messaging RCS
+
+EmailChannel
+→ Amazon SES
+
+The rest of SurgeAir AI should not need major changes when these implementations are replaced.
+
+# 3. CONVERSATION STORE
+
+Create a dedicated conversation repository/service.
+
+Store:
+
+* conversation ID
+* passenger ID
+* passenger name
+* booking reference
+* origin
+* destination
+* current flight
+* current channel
+* previous channel
+* message history
+* detected intent
+* extracted constraints
+* available alternatives
+* selected flight
+* confirmation status
+* action status
+* timestamps
+
+Use the current local/in-memory/database implementation for now.
+
+Create the interface so it can later be replaced with:
+
+**Amazon DynamoDB**
+
+The conversation must persist when the simulated communication channel changes.
+
+Example:
+
+SMS:
+
+SurgeAir:
+“Your SA204 flight has been delayed.”
+
+Draymond:
+“I need to arrive before 6 PM.”
+
+Then switch to RCS.
+
+SurgeAir should still know:
+
+Passenger = Draymond Hillsend
+
+Booking = SG4821
+
+Route = LIS → EDI
+
+Constraint = arrival before 18:00
+
+The passenger should NOT need to repeat this information.
+
+# 4. CREATE A MODEL PROVIDER INTERFACE
+
+Separate AI/model functionality from application logic.
+
+Create an abstraction such as:
+
+ModelProvider
+
+with appropriate methods for:
+
+* interpreting passenger requests
+* detecting intent
+* extracting structured constraints
+* generating conversational responses
+
+Keep the current local/simulated implementation as:
+
+LocalModelProvider
+
+Prepare another implementation boundary for:
+
+BedrockModelProvider
+
+Do NOT require actual Amazon Bedrock credentials yet.
+
+The future architecture should allow:
+
+LocalModelProvider
+
+to be replaced by:
+
+Amazon Bedrock / Bedrock AgentCore
+
+without rebuilding the application.
+
+# 5. AGENT TOOL REGISTRY
+
+Formalize the existing airline operations as agent tools.
+
+Register:
+
+getBooking
+
+getFlightStatus
+
+searchAlternativeFlights
+
+rebookFlight
+
+sendItinerary
+
+Each tool should have:
+
+* name
+* description
+* input schema
+* execution function
+* structured output
+* error handling
+
+The architecture should allow Amazon Bedrock/AgentCore to invoke these tools later.
+
+# 6. ACTION SAFETY
+
+Maintain the existing confirmation requirement.
+
+SurgeAir AI MUST NOT execute `rebookFlight` simply because the passenger selected a flight.
+
+Required flow:
+
+Passenger:
+“Take SA218.”
+
+SurgeAir:
+
+“SA218 arrives in Edinburgh at 14:40. Would you like me to rebook booking SG4821 from SA204 to SA218?”
+
+Passenger:
+
+“Yes, confirm.”
+
+Only then execute:
+
+rebookFlight()
+
+Record:
+
+confirmationReceived = true
+
+before performing the booking change.
+
+# 7. EVENT SYSTEM
+
+Introduce an internal event structure for important activities.
+
+Examples:
+
+FLIGHT_DISRUPTION_DETECTED
+
+PASSENGER_NOTIFIED
+
+PASSENGER_MESSAGE_RECEIVED
+
+BOOKING_RETRIEVED
+
+CONSTRAINT_DETECTED
+
+ALTERNATIVES_FOUND
+
+ALTERNATIVE_SELECTED
+
+CONFIRMATION_REQUESTED
+
+CONFIRMATION_RECEIVED
+
+REBOOKING_STARTED
+
+REBOOKING_COMPLETED
+
+ITINERARY_GENERATED
+
+ITINERARY_SENT
+
+Store:
+
+event ID
+
+conversation ID
+
+passenger ID
+
+event type
+
+channel
+
+timestamp
+
+metadata
+
+This should later be suitable for integration with AWS event/analytics infrastructure.
+
+# 8. OBSERVABILITY
+
+Create a lightweight logging abstraction.
+
+Log:
+
+* incoming messages
+* outgoing messages
+* tool calls
+* agent decisions
+* channel transitions
+* errors
+* rebooking attempts
+* rebooking success/failure
+
+Do NOT log passwords, credentials, API keys or sensitive secrets.
+
+Structure the logging interface so it can later send logs to:
+
+**Amazon CloudWatch**
+
+# 9. AWS CONFIGURATION LAYER
+
+Create configuration placeholders for future AWS integration.
+
+Examples:
+
+AWS_REGION
+
+BEDROCK_MODEL_ID
+
+CONVERSATION_TABLE_NAME
+
+AWS_SMS_ENABLED
+
+AWS_WHATSAPP_ENABLED
+
+AWS_RCS_ENABLED
+
+AWS_SES_ENABLED
+
+SES_FROM_ADDRESS
+
+Do not hardcode credentials.
+
+Do not place AWS access keys or secret keys in frontend code.
+
+Provide `.env.example` containing placeholders only.
+
+# 10. OPERATIONS DASHBOARD
+
+Preserve the existing dashboard.
+
+Enhance it to expose the orchestration process visually.
+
+Add or preserve sections for:
+
+ACTIVE DISRUPTION
+
+Passenger:
+Draymond Hillsend
+
+Booking:
+SG4821
+
+Flight:
+SA204
+
+Route:
+Lisbon → Edinburgh
+
+Status:
+Delayed 3 hours
+
+CONVERSATION
+
+Show channel badges:
+
+SMS
+
+WhatsApp
+
+RCS
+
+Email
+
+AGENT ACTIVITY
+
+Show:
+
+Passenger identified
+
+Booking retrieved
+
+Constraint detected
+
+Alternatives searched
+
+SA218 / SA226 found
+
+Alternative selected
+
+Confirmation requested
+
+Confirmation received
+
+Rebooking executed
+
+Itinerary generated
+
+Email simulated
+
+ORCHESTRATION
+
+If appropriate, show:
+
+Current Channel
+
+Previous Channel
+
+Conversation ID
+
+Current Intent
+
+Current Agent State
+
+Last Tool Called
+
+Do not expose secrets or internal chain-of-thought.
+
+Only display operational state and tool/activity information.
+
+# 11. AWS READINESS STATUS
+
+Add a small development/admin section to the dashboard showing integration readiness.
+
+Example:
+
+AWS Integration Status
+
+Amazon Bedrock
+SIMULATED
+
+Bedrock AgentCore
+SIMULATED
+
+End User Messaging SMS
+SIMULATED
+
+End User Messaging RCS
+SIMULATED
+
+WhatsApp
+SIMULATED
+
+Amazon SES
+SIMULATED
+
+DynamoDB
+LOCAL
+
+CloudWatch
+LOCAL LOGGING
+
+This makes it obvious during development which components are real and which are simulated.
+
+# 12. README UPDATE
+
+Update the README with a section titled:
+
+## AWS Architecture
+
+Explain how the current adapters map to AWS services.
+
+Include:
+
+LocalModelProvider
+→ Amazon Bedrock / Bedrock AgentCore
+
+ConversationRepository
+→ Amazon DynamoDB
+
+SmsChannel
+→ AWS End User Messaging SMS
+
+WhatsAppChannel
+→ AWS End User Messaging Social
+
+RcsChannel
+→ AWS End User Messaging RCS
+
+EmailChannel
+→ Amazon SES
+
+Logger
+→ Amazon CloudWatch
+
+Airline tool endpoints
+→ AWS Lambda + API Gateway
+
+Also reference these AWS sample architectures as inspiration:
+
+* AWS Chat Orchestrator for Generative AI Conversations
+* AWS Engagement Database and Analytics Sample for End User Messaging and SES
+* AWS Generative AI Email Categorization using SES Mail Manager
+
+Do not copy sample code blindly.
+
+Use their architectural patterns where useful.
+
+# 13. TESTING
+
+After refactoring, run all existing TypeScript checks and application tests.
+
+Verify the complete demo again:
+
+Draymond Hillsend
+
+SG4821
+
+Lisbon → Edinburgh
+
+SA204 delayed
+
+→ SMS notification
+
+→ “I need to arrive in Edinburgh before 6 PM.”
+
+→ conversation context stored
+
+→ alternatives SA218 and SA226
+
+→ channel can change without losing context
+
+→ SA218 selected
+
+→ explicit confirmation requested
+
+→ passenger confirms
+
+→ rebookFlight executes
+
+→ SG4821 changes SA204 → SA218
+
+→ confirmation generated
+
+→ itinerary email simulated
+
+→ dashboard timeline updated.
+
+If any existing functionality breaks during the refactor, fix it before considering Milestone 1.5 complete.
+
+# COMPLETION REPORT
+
+When finished, provide a concise report containing:
+
+1. Files created
+2. Files modified
+3. Architecture changes
+4. New interfaces/adapters
+5. Tests/checks performed
+6. Whether the original demo still works
+7. Any issues encountered
+8. What remains simulated
+9. What is ready for actual AWS integration
+
+Do not deploy real AWS infrastructure during this milestone.

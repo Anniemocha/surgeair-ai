@@ -202,7 +202,7 @@ components:
         timestamp: { type: string }
     Dashboard:
       type: object
-      required: [booking, disruption, messages, activities, selectedAlternative, confirmationStatus, actionStatus]
+      required: [booking, disruption, messages, activities, selectedAlternative, confirmationStatus, actionStatus, orchestration, integrationStatus]
       properties:
         booking: { $ref: "#/components/schemas/Booking" }
         disruption: { $ref: "#/components/schemas/Flight" }
@@ -216,6 +216,28 @@ components:
           type: ["string", "null"]
         confirmationStatus: { type: string }
         actionStatus: { type: string }
+        orchestration:
+          $ref: "#/components/schemas/OrchestrationState"
+        integrationStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationReadiness"
+    OrchestrationState:
+      type: object
+      required: [conversationId, currentChannel, previousChannel, currentIntent, currentAgentState, lastToolCalled]
+      properties:
+        conversationId: { type: string }
+        currentChannel: { type: string }
+        previousChannel: { type: ["string", "null"] }
+        currentIntent: { type: ["string", "null"] }
+        currentAgentState: { type: string }
+        lastToolCalled: { type: ["string", "null"] }
+    IntegrationReadiness:
+      type: object
+      required: [service, status]
+      properties:
+        service: { type: string }
+        status: { type: string }
     RebookInput:
       type: object
       required: [bookingReference, newFlight, confirmation]

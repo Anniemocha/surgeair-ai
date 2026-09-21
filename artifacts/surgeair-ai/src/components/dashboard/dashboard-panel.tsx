@@ -8,12 +8,14 @@ import {
   User, 
   Ticket,
   Activity as ActivityIcon,
-  MapPin
+  MapPin,
+  Brain,
+  Network,
+  CheckCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 
 function displayTime(value: string) {
   if (/^\d{2}:\d{2}(:\d{2})?$/.test(value)) {
@@ -29,10 +31,9 @@ interface DashboardPanelProps {
 }
 
 export function DashboardPanel({ dashboard }: DashboardPanelProps) {
-  const { activities, confirmationStatus, actionStatus } = dashboard;
+  const { activities, confirmationStatus, actionStatus, orchestration, integrationStatus } = dashboard;
   
   const { data: liveBooking } = useGetBooking(dashboard.booking.bookingReference);
-  
   const { data: liveDisruption } = useGetFlightStatus(dashboard.disruption.flightNumber);
 
   const booking = liveBooking || dashboard.booking;
@@ -107,7 +108,7 @@ export function DashboardPanel({ dashboard }: DashboardPanelProps) {
                     {booking.currentFlight.departure}
                   </span>
                 </div>
-                
+
                 <div className="flex-1 flex flex-col items-center px-4 relative">
                   <div className="w-full h-px bg-border absolute top-1/2 -translate-y-1/2 z-0" />
                   <div className="bg-background px-2 z-10 text-muted-foreground text-xs font-medium border border-border rounded-full flex items-center gap-1">
@@ -123,6 +124,112 @@ export function DashboardPanel({ dashboard }: DashboardPanelProps) {
                     {booking.currentFlight.arrival}
                   </span>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* AI Orchestration */}
+          <Card className="shadow-sm border-t-4 border-t-secondary">
+            <CardHeader className="pb-3 border-b border-border/50 bg-muted/20">
+              <CardTitle className="text-sm font-medium flex items-center gap-2 uppercase tracking-wide">
+                <Brain className="h-4 w-4 text-secondary" />
+                AI Agent Orchestration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
+                 <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Conversation ID</p>
+                  <p className="font-mono text-sm text-foreground bg-muted/30 px-2 py-1 rounded inline-block">
+                    {orchestration.conversationId}
+                  </p>
+                 </div>
+
+                 <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Active Channel</p>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default" className="bg-primary/10 text-primary hover:bg-primary/20 shadow-none border-0">
+                      {orchestration.currentChannel}
+                    </Badge>
+                    {orchestration.previousChannel && (
+                      <>
+                        <span className="text-[10px] text-muted-foreground uppercase">Prev:</span>
+                        <Badge variant="secondary" className="opacity-70 shadow-none">
+                          {orchestration.previousChannel}
+                        </Badge>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Agent State</p>
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-secondary"></span>
+                    </span>
+                    <span className="text-sm font-medium">{orchestration.currentAgentState}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Current Intent</p>
+                  <p className="text-sm font-medium">{orchestration.currentIntent || 'Processing...'}</p>
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Last Tool Called</p>
+                  {orchestration.lastToolCalled ? (
+                    <div className="inline-flex items-center gap-2 font-mono text-xs bg-muted px-2.5 py-1.5 rounded-md border border-border">
+                      <Network className="h-3 w-3 text-muted-foreground" />
+                      {orchestration.lastToolCalled}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground italic">No tools called yet</span>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* System Readiness */}
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3 border-b border-border/50 bg-muted/20">
+              <CardTitle className="text-sm font-medium flex items-center gap-2 uppercase tracking-wide">
+                <Network className="h-4 w-4" />
+                Integration Readiness
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-5">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {integrationStatus.map((integration, idx) => {
+                  const isHealthy = ['HEALTHY', 'READY', 'ONLINE', 'ACTIVE'].includes(integration.status.toUpperCase());
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex flex-col gap-1 p-3 rounded-lg border transition-colors ${
+                        isHealthy ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-950/10 dark:border-emerald-900/30' : 'bg-destructive/5 border-destructive/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isHealthy ? (
+                          <CheckCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-500 shrink-0" />
+                        ) : (
+                          <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                        )}
+                        <span className="text-xs font-semibold leading-tight line-clamp-1 truncate" title={integration.service}>
+                          {integration.service}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] uppercase tracking-wider font-medium pl-5 ${
+                        isHealthy ? 'text-emerald-700/80 dark:text-emerald-400/80' : 'text-destructive/80'
+                      }`}>
+                        {integration.status}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

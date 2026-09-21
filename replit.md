@@ -34,6 +34,9 @@ An omnichannel airline passenger assistant that finds disruption alternatives an
 - Rebooking is deterministic and requires a true explicit-confirmation flag.
 - Conversation state is isolated behind an in-memory store so DynamoDB can replace it later.
 - Itinerary delivery uses an interface so Amazon SES can replace the simulator.
+- All communication enters through normalized channel adapters and a message orchestrator.
+- Airline operations are registered as structured agent tools for future Bedrock AgentCore invocation.
+- Operational events and logs are separated for later CloudWatch and analytics integration.
 
 ## Product
 

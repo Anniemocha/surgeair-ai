@@ -49,6 +49,23 @@ export interface ConversationMessage {
   timestamp: string;
 }
 
+export interface OrchestrationState {
+  conversationId: string;
+  currentChannel: string;
+  /** @nullable */
+  previousChannel: string | null;
+  /** @nullable */
+  currentIntent: string | null;
+  currentAgentState: string;
+  /** @nullable */
+  lastToolCalled: string | null;
+}
+
+export interface IntegrationReadiness {
+  service: string;
+  status: string;
+}
+
 export interface Dashboard {
   booking: Booking;
   disruption: Flight;
@@ -58,6 +75,8 @@ export interface Dashboard {
   selectedAlternative: string | null;
   confirmationStatus: string;
   actionStatus: string;
+  orchestration: OrchestrationState;
+  integrationStatus: IntegrationReadiness[];
 }
 
 export interface RebookInput {

@@ -87,6 +87,46 @@ No AWS credentials are required for Milestone 1.
 
 The OpenAPI contract and service interfaces are designed to keep the frontend stable while these local implementations are replaced.
 
+## AWS Architecture
+
+Milestone 1.5 introduces replaceable adapters around every future AWS boundary while keeping all runtime behavior local:
+
+| Current implementation | Future AWS implementation |
+| --- | --- |
+| `LocalModelProvider` | Amazon Bedrock and Amazon Bedrock AgentCore |
+| `ConversationRepository` | Amazon DynamoDB |
+| `SmsChannel` | AWS End User Messaging SMS |
+| `WhatsAppChannel` | AWS End User Messaging Social |
+| `RcsChannel` | AWS End User Messaging RCS |
+| `EmailChannel` | Amazon SES |
+| `OperationalLogger` | Amazon CloudWatch |
+| Airline tool routes | AWS Lambda and Amazon API Gateway |
+
+The message path is:
+
+```text
+Passenger
+  → Channel Adapter
+  → Message Orchestrator
+  → Conversation Repository
+  → Model Provider / SurgeAir Agent
+  → Airline Tool Registry
+  → Channel Adapter
+  → Passenger
+```
+
+Incoming messages use one normalized structure regardless of channel. The in-memory conversation repository preserves the passenger, booking, route, extracted constraint, selected flight, confirmation state, messages, and channel transitions. The internal event store records important workflow events in a form that can later feed AWS analytics or event infrastructure.
+
+The architecture is informed by the patterns in:
+
+- AWS Chat Orchestrator for Generative AI Conversations
+- AWS Engagement Database and Analytics Sample for End User Messaging and SES
+- AWS Generative AI Email Categorization using SES Mail Manager
+
+Their separation of channel ingress, orchestration, state, model execution, tools, delivery, and observability is used as guidance; no sample code is copied directly.
+
+Configuration placeholders are documented in `.env.example`. They contain no credentials and all AWS feature flags default to disabled.
+
 ## Safety boundaries
 
 - Rebooking requires explicit passenger confirmation.

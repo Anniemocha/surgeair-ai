@@ -1,3 +1,16 @@
+import {
+  EmailChannel,
+  RcsChannel,
+  SmsChannel,
+  WhatsAppChannel,
+} from "../channels/channel-adapters";
+import { integrationReadiness } from "../config/aws";
+import { InMemoryConversationRepository } from "../conversation/conversation-repository";
+import { InMemoryEventStore, type SurgeAirEventType } from "../events/event-store";
+import { LocalModelProvider } from "../models/model-provider";
+import { LocalOperationalLogger } from "../observability/operational-logger";
+import { MessageOrchestrator } from "../orchestration/message-orchestrator";
+
 export type Channel = "SMS" | "WhatsApp" | "RCS" | "Email";
 
 export interface FlightRecord {
@@ -158,22 +171,62 @@ const messages: MessageRecord[] = [
   },
 ];
 
+const conversationId = "conv-sg4821-disruption";
+const operationalLogger = new LocalOperationalLogger();
+const eventStore = new InMemoryEventStore();
+const conversationRepository = new InMemoryConversationRepository({
+  ...conversation,
+  conversationId,
+  messages: [...messages],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  lastToolCalled: null,
+  currentAgentState: "Disruption detected",
+});
+const messageOrchestrator = new MessageOrchestrator(
+  [
+    new SmsChannel(operationalLogger),
+    new WhatsAppChannel(operationalLogger),
+    new RcsChannel(operationalLogger),
+    new EmailChannel(operationalLogger),
+  ],
+  conversationRepository,
+  new LocalModelProvider(),
+  eventStore,
+  operationalLogger,
+);
+
 const activities: ActivityRecord[] = [
   {
     id: "activity-1",
     label: "Flight disruption detected",
     detail: "SA204 delayed by 3 hours",
-    status: "complete",
+    status: "COMPLETED",
     timestamp: "10:02",
   },
   {
     id: "activity-2",
     label: "Passenger notified",
     detail: "SMS sent to Draymond Hillsend",
-    status: "complete",
+    status: "COMPLETED",
     timestamp: "10:03",
   },
 ];
+
+eventStore.append({
+  conversationId,
+  passengerId: booking.passengerId,
+  eventType: "FLIGHT_DISRUPTION_DETECTED",
+  channel: "sms",
+  metadata: { flightNumber: "SA204", delayMinutes: 180 },
+});
+eventStore.append({
+  conversationId,
+  passengerId: booking.passengerId,
+  eventType: "PASSENGER_NOTIFIED",
+  channel: "sms",
+  metadata: { bookingReference: booking.bookingReference },
+});
 
 function minutes(time: string): number {
   const [hours = "0", mins = "0"] = time.split(":");
@@ -185,14 +238,21 @@ function addActivity(label: string, detail: string) {
     id: `activity-${activities.length + 1}`,
     label,
     detail,
-    status: "complete",
+    status: "COMPLETED",
     timestamp: new Date().toISOString(),
   });
 }
 
+function addActivityOnce(label: string, detail: string) {
+  if (!activities.some((activity) => activity.label === label)) {
+    addActivity(label, detail);
+  }
+}
+
 function addMessage(channel: Channel, sender: string, text: string) {
-  messages.push({
-    id: `msg-${messages.length + 1}`,
+  const stored = conversationRepository.get(conversationId);
+  conversationRepository.addMessage(conversationId, {
+    id: `msg-${(stored?.messages.length ?? 0) + 1}`,
     channel,
     sender,
     text,
@@ -200,9 +260,63 @@ function addMessage(channel: Channel, sender: string, text: string) {
   });
 }
 
+function appendEvent(
+  eventType: SurgeAirEventType,
+  channel: Channel,
+  metadata: Record<string, string | number | boolean | null>,
+) {
+  eventStore.append({
+    conversationId,
+    passengerId: booking.passengerId,
+    eventType,
+    channel: channel.toLowerCase(),
+    metadata,
+  });
+}
+
+function syncConversation(lastToolCalled: string | null, currentAgentState: string) {
+  const stored = conversationRepository.get(conversationId);
+  if (!stored) {
+    throw new Error("Demo conversation is unavailable.");
+  }
+  conversationRepository.save({
+    ...stored,
+    ...conversation,
+    messages: stored.messages,
+    lastToolCalled,
+    currentAgentState,
+  });
+}
+
 export const surgeAirStore = {
+  async recordPassengerMessage(channel: Channel, content: string) {
+    return messageOrchestrator.receive({
+      messageId: `inbound-${Date.now()}`,
+      conversationId,
+      passengerId: booking.passengerId,
+      bookingReference: booking.bookingReference,
+      channel: channel.toLowerCase() as Lowercase<Channel>,
+      direction: "inbound",
+      content,
+      timestamp: new Date().toISOString(),
+    });
+  },
+
   getBooking(reference: string) {
-    return reference.toUpperCase() === booking.bookingReference ? booking : null;
+    const found =
+      reference.toUpperCase() === booking.bookingReference ? booking : null;
+    if (found) {
+      addActivityOnce("Passenger identified", found.passengerName);
+      addActivityOnce(
+        "Booking retrieved",
+        `Booking ${found.bookingReference} retrieved`,
+      );
+      appendEvent("BOOKING_RETRIEVED", conversation.currentChannel, {
+        bookingReference: found.bookingReference,
+      });
+      syncConversation("getBooking", "Booking retrieved");
+    }
+    return found;
   },
 
   getFlight(flightNumber: string) {
@@ -232,6 +346,13 @@ export const surgeAirStore = {
     );
     conversation.previousChannel = conversation.currentChannel;
     conversation.currentChannel = "WhatsApp";
+    appendEvent("CONSTRAINT_DETECTED", "WhatsApp", {
+      arrivalBefore: arrivalBefore ?? null,
+    });
+    appendEvent("ALTERNATIVES_FOUND", "WhatsApp", {
+      flights: matches.map((flight) => flight.flightNumber).join(","),
+    });
+    syncConversation("searchAlternativeFlights", "Presenting alternatives");
     addActivity(
       "Arrival constraint detected",
       `Arrival before ${arrivalBefore ?? "requested time"}`,
@@ -247,11 +368,27 @@ export const surgeAirStore = {
     if (!confirmed) {
       conversation.selectedFlight = newFlightNumber.toUpperCase();
       conversation.confirmationStatus = "Awaiting passenger confirmation";
+      appendEvent("ALTERNATIVE_SELECTED", "RCS", {
+        flightNumber: conversation.selectedFlight,
+      });
+      appendEvent("CONFIRMATION_REQUESTED", "RCS", {
+        bookingReference: reference,
+      });
+      syncConversation("rebookFlight", "Awaiting confirmation");
       return { error: "Explicit passenger confirmation is required." } as const;
     }
 
+    operationalLogger.record("rebooking_attempt", {
+      bookingReference: reference,
+      newFlight: newFlightNumber,
+      confirmationReceived: confirmed,
+    });
     const target = flights.get(newFlightNumber.toUpperCase());
     if (reference.toUpperCase() !== booking.bookingReference || !target) {
+      operationalLogger.record("rebooking_failure", {
+        bookingReference: reference,
+        newFlight: newFlightNumber,
+      });
       return { error: "Booking or flight not found." } as const;
     }
 
@@ -264,6 +401,29 @@ export const surgeAirStore = {
     conversation.confirmationStatus = "Confirmed";
     conversation.rebookingStatus = "Rebooked";
     conversation.currentFlight = target.flightNumber;
+    addActivityOnce("Alternative selected", target.flightNumber);
+    addActivityOnce(
+      "Confirmation requested",
+      `Rebook ${reference} to ${target.flightNumber}`,
+    );
+    appendEvent("ALTERNATIVE_SELECTED", "RCS", {
+      flightNumber: target.flightNumber,
+    });
+    appendEvent("CONFIRMATION_RECEIVED", "RCS", {
+      confirmationReceived: true,
+    });
+    appendEvent("REBOOKING_STARTED", "RCS", {
+      bookingReference: reference,
+    });
+    appendEvent("REBOOKING_COMPLETED", "RCS", {
+      previousFlight,
+      currentFlight: target.flightNumber,
+    });
+    operationalLogger.record("rebooking_success", {
+      bookingReference: reference,
+      previousFlight,
+      currentFlight: target.flightNumber,
+    });
     addMessage(
       "RCS",
       "Draymond Hillsend",
@@ -274,6 +434,7 @@ export const surgeAirStore = {
       "Booking updated",
       `${previousFlight} changed to ${target.flightNumber}`,
     );
+    syncConversation("rebookFlight", "Rebooking completed");
 
     return {
       booking,
@@ -290,22 +451,42 @@ export const surgeAirStore = {
       `Itinerary for ${booking.currentFlight.flightNumber}`,
     );
     addActivity("Email delivery simulated", booking.bookingReference);
+    appendEvent("ITINERARY_GENERATED", "Email", {
+      flightNumber: booking.currentFlight.flightNumber,
+    });
+    appendEvent("ITINERARY_SENT", "Email", {
+      bookingReference: booking.bookingReference,
+    });
     addMessage(
       "Email",
       "SurgeAir AI",
       `Your updated itinerary for ${booking.currentFlight.flightNumber} has been sent.`,
     );
+    syncConversation("sendItinerary", "Itinerary sent");
   },
 
   getDashboard() {
+    const stored = conversationRepository.get(conversationId);
+    if (!stored) {
+      throw new Error("Demo conversation is unavailable.");
+    }
     return {
       booking,
       disruption: flights.get("SA204")!,
-      messages,
+      messages: stored.messages,
       activities,
       selectedAlternative: conversation.selectedFlight,
       confirmationStatus: conversation.confirmationStatus,
       actionStatus: conversation.rebookingStatus,
+      orchestration: {
+        conversationId,
+        currentChannel: stored.currentChannel,
+        previousChannel: stored.previousChannel,
+        currentIntent: stored.detectedIntent,
+        currentAgentState: stored.currentAgentState,
+        lastToolCalled: stored.lastToolCalled,
+      },
+      integrationStatus: [...integrationReadiness],
     };
   },
 };

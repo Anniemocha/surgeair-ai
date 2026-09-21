@@ -9,6 +9,8 @@ import type { Activity } from './activity';
 import type { Booking } from './booking';
 import type { ConversationMessage } from './conversationMessage';
 import type { Flight } from './flight';
+import type { IntegrationReadiness } from './integrationReadiness';
+import type { OrchestrationState } from './orchestrationState';
 
 export interface Dashboard {
   booking: Booking;
@@ -19,4 +21,6 @@ export interface Dashboard {
   selectedAlternative: string | null;
   confirmationStatus: string;
   actionStatus: string;
+  orchestration: OrchestrationState;
+  integrationStatus: IntegrationReadiness[];
 }

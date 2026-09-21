@@ -13,6 +13,8 @@ import {
   SearchAlternativeFlightsResponse,
   SendItineraryBody,
   SendItineraryResponse,
+  TestSmsIntegrationBody,
+  TestSmsIntegrationResponse,
 } from "@workspace/api-zod";
 import {
   surgeAirStore,
@@ -20,8 +22,16 @@ import {
   type FlightRecord,
 } from "../surgeair/domain";
 import { airlineTools } from "../surgeair/airline-tools";
+import { AwsSmsSendError } from "../channels/aws-sms-provider";
+import {
+  isAuthorizedSmsTestRequest,
+  SmsTestRateLimiter,
+} from "../channels/sms-test-guard";
 
 const router: IRouter = Router();
+const smsTestRateLimiter = new SmsTestRateLimiter(
+  Number(process.env.SMS_TEST_MIN_INTERVAL_MS ?? 30_000),
+);
 router.get("/dashboard", (_req, res) => {
   res.json(GetDashboardResponse.parse(surgeAirStore.getDashboard()));
 });
@@ -108,6 +118,66 @@ router.post("/itinerary/send", async (req, res) => {
     return;
   }
   res.json(SendItineraryResponse.parse(result));
+});
+
+router.post("/integrations/sms/test", async (req, res): Promise<void> => {
+  if (process.env.NODE_ENV === "production") {
+    res.status(404).json({ error: "Not found." });
+    return;
+  }
+  const input = TestSmsIntegrationBody.safeParse(req.body);
+  if (!input.success) {
+    res.status(400).json({ error: "A message between 1 and 1600 characters is required." });
+    return;
+  }
+  if (surgeAirStore.getSmsProviderMode() !== "aws") {
+    res.status(409).json({ error: "AWS SMS provider is not selected." });
+    return;
+  }
+  const configuredToken = process.env.SMS_TEST_TOKEN;
+  if (!configuredToken?.trim()) {
+    res.status(503).json({
+      error: "SMS test authorization is not configured.",
+    });
+    return;
+  }
+  if (
+    !isAuthorizedSmsTestRequest(
+      req.get("x-sms-test-token"),
+      configuredToken,
+    )
+  ) {
+    res.status(403).json({ error: "SMS test authorization failed." });
+    return;
+  }
+  if (!smsTestRateLimiter.tryAcquire()) {
+    res.status(429).json({
+      error: "Wait before sending another SMS test message.",
+    });
+    return;
+  }
+
+  try {
+    const result = await surgeAirStore.sendSmsSimulatorTest(input.data.message);
+    res.json(
+      TestSmsIntegrationResponse.parse({
+        success: true,
+        ...result,
+      }),
+    );
+  } catch (error) {
+    if (error instanceof AwsSmsSendError) {
+      res.status(502).json({
+        error:
+          "AWS SMS send failed. Valid IAM credentials and End User Messaging SMS permissions are required.",
+      });
+      return;
+    }
+    res.status(503).json({
+      error:
+        "AWS SMS configuration is incomplete. Configure the simulator destination and origination identity.",
+    });
+  }
 });
 
 export default router;

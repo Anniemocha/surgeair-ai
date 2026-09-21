@@ -274,6 +274,11 @@ export function DashboardPanel({ dashboard }: DashboardPanelProps) {
                       }`}>
                         {integration.status}
                       </span>
+                      {integration.detail && (
+                        <span className="text-[10px] text-muted-foreground pl-5">
+                          {integration.detail}
+                        </span>
+                      )}
                     </div>
                   );
                 })}

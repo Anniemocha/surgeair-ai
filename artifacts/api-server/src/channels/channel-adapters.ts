@@ -1,5 +1,10 @@
 import type { Channel } from "../surgeair/domain";
 import type { OperationalLogger } from "../observability/operational-logger";
+import {
+  AwsSmsProvider,
+  type AwsSmsClient,
+  type AwsSmsDeliveryResult,
+} from "./aws-sms-provider";
 
 export interface NormalizedMessage {
   messageId: string;
@@ -42,7 +47,93 @@ abstract class SimulatedChannelAdapter implements ChannelAdapter {
   }
 }
 
-export class SmsChannel extends SimulatedChannelAdapter {
+export interface SmsChannelOptions {
+  provider: "aws" | "simulated";
+  region: string;
+  originationIdentity?: string;
+  simulatorDestination?: string;
+  client?: AwsSmsClient;
+}
+
+export class SmsChannel implements ChannelAdapter {
+  readonly channel = "SMS" as const;
+
+  private readonly simulated: SimulatedSmsChannel;
+  private readonly awsProvider: AwsSmsProvider | null;
+  private readonly simulatorDestination?: string;
+
+  constructor(
+    private readonly logger: OperationalLogger,
+    private readonly options: SmsChannelOptions = {
+      provider: "simulated",
+      region: "eu-west-1",
+    },
+  ) {
+    this.simulated = new SimulatedSmsChannel(logger);
+    this.simulatorDestination =
+      options.simulatorDestination?.trim() || undefined;
+    this.awsProvider =
+      options.provider === "aws"
+        ? new AwsSmsProvider({
+            region: options.region,
+            originationIdentity: options.originationIdentity,
+            simulatorDestination: this.simulatorDestination,
+            logger,
+            client: options.client,
+          })
+        : null;
+  }
+
+  async sendMessage(message: NormalizedMessage) {
+    if (!this.awsProvider) {
+      return this.simulated.sendMessage(message);
+    }
+    if (!this.simulatorDestination) {
+      throw new Error(
+        "AWS_SMS_SIMULATOR_DESTINATION is required for AWS SMS delivery.",
+      );
+    }
+    const delivery = await this.awsProvider.sendSimulator(
+      this.simulatorDestination,
+      message.content,
+    );
+    this.logger.record("outgoing_message", {
+      conversationId: message.conversationId,
+      channel: message.channel,
+      messageId: delivery.messageId ?? message.messageId,
+    });
+    return {
+      ...message,
+      messageId: delivery.messageId ?? message.messageId,
+      timestamp: delivery.timestamp,
+    };
+  }
+
+  receiveMessage(message: NormalizedMessage) {
+    return this.simulated.receiveMessage(message);
+  }
+
+  isAwsSelected() {
+    return this.awsProvider !== null;
+  }
+
+  async sendSimulatorTest(messageBody: string): Promise<AwsSmsDeliveryResult> {
+    if (!this.awsProvider) {
+      throw new Error("AWS SMS provider is not selected.");
+    }
+    if (!this.simulatorDestination) {
+      throw new Error(
+        "AWS_SMS_SIMULATOR_DESTINATION is required for the SMS test.",
+      );
+    }
+    return this.awsProvider.sendSimulator(
+      this.simulatorDestination,
+      messageBody,
+    );
+  }
+}
+
+class SimulatedSmsChannel extends SimulatedChannelAdapter {
   readonly channel = "SMS" as const;
 }
 

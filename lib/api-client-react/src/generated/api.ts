@@ -30,7 +30,9 @@ import type {
   PrepareRebookingInput,
   RebookInput,
   RebookResult,
-  SearchAlternativeFlightsParams
+  SearchAlternativeFlightsParams,
+  SmsDeliveryResult,
+  SmsTestInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -715,5 +717,93 @@ export const useSendItinerary = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSendItineraryMutationOptions(options));
+    }
+
+export const getTestSmsIntegrationUrl = () => {
+
+
+
+
+  return `/api/integrations/sms/test`
+}
+
+/**
+ * @summary Send a guarded AWS SMS Simulator test message
+ */
+export const testSmsIntegration = async (smsTestInput: SmsTestInput, options?: Parameters<typeof customFetch>[1]): Promise<SmsDeliveryResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SmsDeliveryResult>(getTestSmsIntegrationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(smsTestInput)
+  }
+);}
+
+
+
+
+
+export const getTestSmsIntegrationMutationKey = () => ['testSmsIntegration'] as const;
+
+export const getTestSmsIntegrationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testSmsIntegration>>, TError,TestSmsIntegrationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testSmsIntegration>>, TError,TestSmsIntegrationMutationVariables, TContext> => {
+
+const mutationKey = getTestSmsIntegrationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testSmsIntegration>>, TestSmsIntegrationMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  testSmsIntegration(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestSmsIntegrationMutationResult = NonNullable<Awaited<ReturnType<typeof testSmsIntegration>>>
+    export type TestSmsIntegrationMutationBody = BodyType<SmsTestInput>
+    export type TestSmsIntegrationMutationError = ErrorType<void>
+    export type TestSmsIntegrationMutationVariables = {data: BodyType<SmsTestInput>}
+
+    /**
+ * @summary Send a guarded AWS SMS Simulator test message
+ */
+export const useTestSmsIntegration = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testSmsIntegration>>, TError,TestSmsIntegrationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testSmsIntegration>>,
+        TError,
+        TestSmsIntegrationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTestSmsIntegrationMutationOptions(options));
     }
 

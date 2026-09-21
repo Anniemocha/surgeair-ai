@@ -73,6 +73,7 @@ export interface OrchestrationState {
 export interface IntegrationReadiness {
   service: string;
   status: string;
+  detail?: string;
 }
 
 export interface Dashboard {
@@ -86,6 +87,32 @@ export interface Dashboard {
   actionStatus: string;
   orchestration: OrchestrationState;
   integrationStatus: IntegrationReadiness[];
+}
+
+export interface SmsTestInput {
+  /**
+     * @minLength 1
+     * @maxLength 1600
+     */
+  message: string;
+}
+
+export type SmsDeliveryResultMode = typeof SmsDeliveryResultMode[keyof typeof SmsDeliveryResultMode];
+
+
+export const SmsDeliveryResultMode = {
+  simulator: 'simulator',
+} as const;
+
+export interface SmsDeliveryResult {
+  success: boolean;
+  provider: string;
+  mode: SmsDeliveryResultMode;
+  /** @nullable */
+  messageId: string | null;
+  destination: string;
+  status: string;
+  timestamp: string;
 }
 
 export interface RebookInput {

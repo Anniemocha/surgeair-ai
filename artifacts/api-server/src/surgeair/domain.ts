@@ -4,7 +4,10 @@ import {
   SmsChannel,
   WhatsAppChannel,
 } from "../channels/channel-adapters";
-import { integrationReadiness } from "../config/aws";
+import {
+  getAwsReadinessConfig,
+  integrationReadiness,
+} from "../config/aws";
 import { InMemoryConversationRepository } from "../conversation/conversation-repository";
 import { InMemoryEventStore, type SurgeAirEventType } from "../events/event-store";
 import { createModelProvider } from "../models/model-provider-factory";
@@ -173,6 +176,15 @@ const messages: MessageRecord[] = [
 
 const conversationId = "conv-sg4821-disruption";
 const operationalLogger = new LocalOperationalLogger();
+const awsReadinessConfig = getAwsReadinessConfig();
+const smsChannel = new SmsChannel(operationalLogger, {
+  provider: awsReadinessConfig.channels.sms.provider,
+  region: awsReadinessConfig.region,
+  originationIdentity:
+    awsReadinessConfig.channels.sms.originationIdentity ?? undefined,
+  simulatorDestination:
+    awsReadinessConfig.channels.sms.simulatorDestination ?? undefined,
+});
 const eventStore = new InMemoryEventStore();
 const conversationRepository = new InMemoryConversationRepository({
   ...conversation,
@@ -185,7 +197,7 @@ const conversationRepository = new InMemoryConversationRepository({
 });
 const messageOrchestrator = new MessageOrchestrator(
   [
-    new SmsChannel(operationalLogger),
+    smsChannel,
     new WhatsAppChannel(operationalLogger),
     new RcsChannel(operationalLogger),
     new EmailChannel(operationalLogger),
@@ -499,6 +511,14 @@ export const surgeAirStore = {
     syncConversation("sendItinerary", "Itinerary sent");
   },
 
+  getSmsProviderMode() {
+    return awsReadinessConfig.channels.sms.provider;
+  },
+
+  sendSmsSimulatorTest(message: string) {
+    return smsChannel.sendSimulatorTest(message);
+  },
+
   getDashboard() {
     const stored = conversationRepository.get(conversationId);
     if (!stored) {
@@ -533,7 +553,18 @@ export const surgeAirStore = {
               ...integration,
               status: operationalLogger.getBedrockVerificationStatus(),
             }
-          : integration,
+          : integration.service === "AWS End User Messaging SMS"
+            ? {
+                ...integration,
+                status:
+                  awsReadinessConfig.channels.sms.provider === "simulated"
+                    ? "SIMULATED"
+                    : operationalLogger.getSmsVerificationStatus(),
+                ...(awsReadinessConfig.channels.sms.simulatorDestination
+                  ? { detail: "AWS Simulator" }
+                  : {}),
+              }
+            : integration,
       ),
     };
   },

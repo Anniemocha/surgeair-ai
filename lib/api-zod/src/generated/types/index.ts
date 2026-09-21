@@ -21,3 +21,6 @@ export * from './prepareRebookingInput';
 export * from './rebookInput';
 export * from './rebookResult';
 export * from './searchAlternativeFlightsParams';
+export * from './smsDeliveryResult';
+export * from './smsDeliveryResultMode';
+export * from './smsTestInput';

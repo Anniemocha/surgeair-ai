@@ -84,7 +84,8 @@ export const GetDashboardResponse = zod.object({
 }),
   "integrationStatus": zod.array(zod.object({
   "service": zod.string(),
-  "status": zod.string()
+  "status": zod.string(),
+  "detail": zod.string().optional()
 }))
 })
 
@@ -225,6 +226,32 @@ export const SendItineraryResponse = zod.object({
   "channel": zod.string(),
   "message": zod.string(),
   "sentAt": zod.string()
+})
+
+
+/**
+ * @summary Send a guarded AWS SMS Simulator test message
+ */
+export const TestSmsIntegrationHeader = zod.object({
+  "X-SMS-Test-Token": zod.string()
+})
+
+export const testSmsIntegrationBodyMessageMax = 1600;
+
+
+
+export const TestSmsIntegrationBody = zod.object({
+  "message": zod.string().min(1).max(testSmsIntegrationBodyMessageMax)
+})
+
+export const TestSmsIntegrationResponse = zod.object({
+  "success": zod.boolean(),
+  "provider": zod.string(),
+  "mode": zod.enum(['simulator']),
+  "messageId": zod.string().nullable(),
+  "destination": zod.string(),
+  "status": zod.string(),
+  "timestamp": zod.string()
 })
 
 

@@ -8,6 +8,9 @@ export type OperationalLogType =
   | "channel_transition"
   | "model_request"
   | "bedrock_invocation_failed"
+  | "sms_send_started"
+  | "sms_send_succeeded"
+  | "sms_send_failed"
   | "rebooking_attempt"
   | "rebooking_success"
   | "rebooking_failure"
@@ -29,6 +32,7 @@ export interface ModelExecutionMetadata {
 }
 
 export type BedrockVerificationStatus = "CONNECTED" | "NOT VERIFIED" | "ERROR";
+export type SmsVerificationStatus = "CONNECTED" | "NOT VERIFIED" | "ERROR";
 
 export interface OperationalLogger {
   record(
@@ -49,6 +53,7 @@ export class LocalOperationalLogger implements OperationalLogger {
 
   private bedrockVerificationStatus: BedrockVerificationStatus =
     "NOT VERIFIED";
+  private smsVerificationStatus: SmsVerificationStatus = "NOT VERIFIED";
 
   private pendingBedrockFallback = false;
 
@@ -68,10 +73,23 @@ export class LocalOperationalLogger implements OperationalLogger {
     return this.bedrockVerificationStatus;
   }
 
+  getSmsVerificationStatus(): SmsVerificationStatus {
+    return this.smsVerificationStatus;
+  }
+
   private captureModelExecution(
     type: OperationalLogType,
     details: Record<string, string | number | boolean | null>,
   ) {
+    if (type === "sms_send_succeeded") {
+      this.smsVerificationStatus = "CONNECTED";
+      return;
+    }
+    if (type === "sms_send_failed") {
+      this.smsVerificationStatus = "ERROR";
+      return;
+    }
+
     if (type === "model_request") {
       const provider = details.provider;
       const status = details.status;

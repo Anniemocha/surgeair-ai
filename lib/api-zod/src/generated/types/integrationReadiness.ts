@@ -9,4 +9,5 @@
 export interface IntegrationReadiness {
   service: string;
   status: string;
+  detail?: string;
 }

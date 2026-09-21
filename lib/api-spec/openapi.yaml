@@ -169,6 +169,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ItineraryResult"
+  /integrations/sms/test:
+    post:
+      operationId: testSmsIntegration
+      tags: [surgeair]
+      summary: Send a guarded AWS SMS Simulator test message
+      parameters:
+        - name: X-SMS-Test-Token
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SmsTestInput"
+      responses:
+        "200":
+          description: AWS accepted the simulator message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmsDeliveryResult"
+        "400":
+          description: Invalid message
+        "409":
+          description: AWS SMS is not selected
+        "403":
+          description: SMS test authorization failed
+        "429":
+          description: SMS test rate limit exceeded
+        "502":
+          description: AWS rejected the send request
+        "503":
+          description: AWS SMS configuration is incomplete
 components:
   schemas:
     HealthStatus:
@@ -264,6 +300,29 @@ components:
       properties:
         service: { type: string }
         status: { type: string }
+        detail: { type: string }
+    SmsTestInput:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 1600
+    SmsDeliveryResult:
+      type: object
+      required: [success, provider, mode, messageId, destination, status, timestamp]
+      properties:
+        success: { type: boolean }
+        provider: { type: string }
+        mode:
+          type: string
+          enum: [simulator]
+        messageId:
+          type: ["string", "null"]
+        destination: { type: string }
+        status: { type: string }
+        timestamp: { type: string }
     RebookInput:
       type: object
       required: [bookingReference, newFlight, confirmation]

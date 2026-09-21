@@ -1,167 +1,430 @@
 # SurgeAir AI
 
-SurgeAir AI is an AI-powered omnichannel airline passenger assistant built for an AWS Communication Developer Services hackathon. This Milestone 1 MVP demonstrates how an airline can detect a disruption, understand a passenger's arrival-time constraint, find suitable alternatives, require explicit confirmation, complete a simulated rebooking, and send an updated itinerary.
+> One conversation. Every channel. A smoother journey.
 
-All airline records and communications in this project are simulated.
+SurgeAir AI is an agentic, omnichannel airline passenger-assistance system built for the AWS Communication Developer Services hackathon. It helps a passenger recover from a flight disruption while preserving context across channels and keeping consequential booking actions behind an explicit-confirmation gate.
 
-## Problem
-
-When a flight disruption occurs, passengers often repeat the same information across channels and wait for an agent to interpret their needs. SurgeAir AI maintains one conversation state across channels and guides the passenger through a safe recovery flow without changing a booking from an inferred preference.
-
-## Demo passenger
+The demonstration focuses on one disruption and rebooking journey:
 
 - Passenger: Draymond Hillsend
-- Booking reference: SG4821
-- Route: Lisbon (LIS) to Edinburgh (EDI)
+- Booking: SG4821
+- Route: Lisbon (LIS) → Edinburgh (EDI)
 - Original flight: SA204
-- Status: Delayed by 3 hours
-- Requirement: “I need to arrive in Edinburgh before 6 PM.”
+- Disruption: three-hour delay
+- Passenger constraint: “I need to arrive in Edinburgh before 6 PM.”
 
-The mock inventory includes:
+## The Problem
 
-- SA218 — departs 11:30, arrives 14:40
-- SA226 — departs 13:10, arrives 16:20
+Airline disruption conversations are often fragmented across SMS, messaging apps, email, and support systems. During a time-sensitive disruption, passengers may have to repeat:
 
-Both alternatives satisfy the arrival-before-18:00 constraint.
+- booking references
+- travel constraints
+- selected alternatives
+- previous conversation context
 
-## Demo workflow
+That repetition creates friction and increases the risk of an agent acting on incomplete information.
 
-1. SurgeAir AI notifies Draymond about the SA204 delay through simulated SMS.
-2. Draymond states his arrival-time requirement.
-3. The assistant retrieves SG4821 and checks SA204.
-4. It extracts the arrival-before-18:00 constraint.
-5. It finds and presents SA218 and SA226.
-6. Draymond selects SA218 through the simulated RCS/WhatsApp experience.
-7. SurgeAir AI asks for explicit confirmation.
-8. Only after “Yes, confirm” does the backend change SG4821 from SA204 to SA218.
-9. The app generates an updated itinerary and simulates email delivery.
-10. The operations dashboard records the workflow.
+## The Solution
 
-## Architecture
+SurgeAir AI provides a context-aware passenger assistant that:
 
-The project is a pnpm TypeScript workspace:
+- maintains conversation state
+- understands natural-language travel constraints
+- retrieves booking information
+- checks flight disruption state
+- searches alternative flights
+- remembers the selected alternative
+- requests explicit confirmation before consequential actions
+- performs controlled rebooking
+- sends updated itinerary information
+- supports an omnichannel passenger experience
 
-- `artifacts/surgeair-ai` — React and Vite operations dashboard plus passenger messaging simulator
-- `artifacts/api-server` — Express API with SurgeAir domain services and in-memory demo state
-- `lib/api-spec` — OpenAPI source of truth
-- `lib/api-client-react` — generated React Query hooks
-- `lib/api-zod` — generated Zod request and response validation
+The agent interprets the request, but the backend remains authoritative for tool execution and booking mutation.
 
-The server separates the mock data store and itinerary delivery interface from the HTTP routes. The itinerary sender can later be replaced by Amazon SES, and conversation state can move from the in-memory store to DynamoDB.
+## Demo Journey
 
-## API operations
+The canonical demonstration uses booking SG4821, originally on delayed flight SA204.
 
-- `GET /api/dashboard` — current disruption, passenger, conversation, and agent activity
-- `GET /api/bookings/{bookingReference}` — `getBooking`
-- `GET /api/flights/{flightNumber}/status` — `getFlightStatus`
-- `GET /api/flights/alternatives` — `searchAlternativeFlights`
-- `POST /api/bookings/rebook` — `rebookFlight`; rejects requests without explicit confirmation
-- `POST /api/itinerary/send` — `sendItinerary`; simulates itinerary delivery
+1. SA204 is delayed by three hours.
+2. The passenger receives a disruption notification.
+3. The passenger says: “I need to arrive in Edinburgh before 6 PM.”
+4. SurgeAir finds two suitable alternatives:
+   - SA218 — 11:30 → 14:40
+   - SA226 — 13:10 → 16:20
+5. The passenger says: “Take SA218.”
+6. SurgeAir records the selection but **does not rebook**.
+7. SurgeAir asks for explicit confirmation.
+8. The passenger says: “Yes, confirm.”
+9. `rebookFlight` changes SG4821 from SA204 to SA218.
+10. SurgeAir sends the updated itinerary through Amazon SES.
 
-## Local development
+## Why Explicit Confirmation Matters
 
-Run the managed workflows for:
+SurgeAir separates:
 
-- `artifacts/api-server: API Server`
-- `artifacts/surgeair-ai: web`
+- understanding user intent; and
+- authorization to perform consequential actions.
 
-Useful checks:
+A flight selection is not authorization to rebook. The backend safety gate requires a matching pending selection and explicit confirmation before `rebookFlight` can mutate the booking.
 
-```bash
-pnpm --filter @workspace/api-spec run codegen
-pnpm run typecheck
-```
+Final end-to-end validation proved that:
 
-No AWS credentials are required for Milestone 1.
-
-## AWS migration plan
-
-| Milestone 1 component | AWS target |
-| --- | --- |
-| Conversation and workflow logic | Amazon Bedrock and Amazon Bedrock AgentCore |
-| Express API operations | AWS Lambda and Amazon API Gateway |
-| In-memory conversation state | Amazon DynamoDB |
-| Simulated SMS, WhatsApp, and RCS | AWS End User Messaging and Amazon SNS |
-| Simulated itinerary email | Amazon SES |
-| Application logs and workflow telemetry | Amazon CloudWatch |
-
-The OpenAPI contract and service interfaces are designed to keep the frontend stable while these local implementations are replaced.
+- the booking remained on SA204 after “Take SA218”
+- `rebookFlight` had not executed
+- no final itinerary was sent before confirmation
+- after “Yes, confirm”, the booking changed to SA218
+- the updated itinerary was accepted through live Amazon SES
 
 ## AWS Architecture
 
-Milestone 1.5 introduces replaceable adapters around every future AWS boundary while keeping all runtime behavior local:
+The runtime path is:
 
-| Current implementation | Future AWS implementation |
+```text
+Passenger Channels
+        ↓
+Channel Adapters
+        ↓
+Conversation / Context Layer
+        ↓
+Agent Orchestration
+        ↓
+Amazon Bedrock / Nova 2 Lite
+        ↓
+Tool Layer
+        ↓
+Airline Operations
+        ↓
+Outbound Channels
+```
+
+### Amazon Bedrock
+
+- Amazon Nova 2 Lite
+- Inference profile: `eu.amazon.nova-2-lite-v1:0`
+- Region: `eu-north-1`
+- Extracts passenger intent, destination, arrival constraints, selected flight, recommended tool, and confirmation requirements
+- Does not execute tools or modify booking state
+
+### Amazon Bedrock AgentCore
+
+- Deployed runtime: `surgeair_ai_agent`
+- Live runtime readiness demonstrated
+- Same-session conversational continuity demonstrated
+- The application keeps orchestration and mutation authority in the backend tool layer
+
+### AWS End User Messaging SMS
+
+- Integrated through the official AWS SDK
+- Uses the AWS SMS Simulator for the hackathon demonstration
+- The simulator is a genuine AWS API integration, but it does not claim carrier delivery
+
+### Amazon SES
+
+- Integrated through the official AWS SDK
+- Uses a live `SendEmail` operation
+- The final validation successfully delivered the updated itinerary through SES
+
+### WhatsApp and RCS
+
+- WhatsApp uses the simulated adapter in the current hackathon build
+- RCS uses the simulated adapter in the current hackathon build
+
+Provider abstractions keep channel behavior separate from the orchestration layer, so simulated adapters can be replaced with live AWS channel providers without changing the passenger-facing contract.
+
+## AWS Integration Readiness
+
+| Service | Status | Demo mode |
+| --- | --- | --- |
+| Amazon Bedrock | CONNECTED | Nova 2 Lite |
+| Bedrock AgentCore | CONNECTED | Live Runtime |
+| AWS End User Messaging SMS | CONNECTED | AWS Simulator |
+| Amazon SES | CONNECTED | Live Email |
+| WhatsApp | SIMULATED | Demo Adapter |
+| RCS | SIMULATED | Demo Adapter |
+
+`CONNECTED` means that a genuine AWS runtime operation or verified runtime evidence is available for the integration. `SIMULATED` means that the application demonstrates the channel behavior locally without claiming a live channel operation.
+
+## Agent Tools
+
+The airline tool registry exposes controlled operations:
+
+| Tool | Purpose |
 | --- | --- |
-| `LocalModelProvider` | Amazon Bedrock and Amazon Bedrock AgentCore |
-| `ConversationRepository` | Amazon DynamoDB |
-| `SmsChannel` | AWS End User Messaging SMS |
-| `WhatsAppChannel` | AWS End User Messaging Social |
-| `RcsChannel` | AWS End User Messaging RCS |
-| `EmailChannel` | Amazon SES |
-| `OperationalLogger` | Amazon CloudWatch |
-| Airline tool routes | AWS Lambda and Amazon API Gateway |
+| `getBooking` | Retrieve a passenger booking by booking reference |
+| `getFlightStatus` | Retrieve current flight status and disruption information |
+| `searchAlternativeFlights` | Find available flights by route and arrival constraint |
+| `rebookFlight` | Change a booking only after a matching explicit confirmation |
+| `sendItinerary` | Send the updated itinerary only after confirmed rebooking |
 
-The message path is:
+The model can recommend a tool, but it never calls a tool directly. The backend validates inputs and controls the operation.
+
+## Safety Model
+
+The controlled action sequence is:
+
+1. Retrieve passenger and booking context.
+2. Interpret the passenger's intent.
+3. Search available options.
+4. Record the passenger's selection.
+5. Request explicit confirmation.
+6. Validate that the confirmation matches the pending selection.
+7. Execute the booking mutation.
+8. Send the updated itinerary.
+
+`rebookFlight` is mutation-gated. A selection such as “Take SA218” creates a pending confirmation state; it cannot change the booking by itself. The itinerary sender has a separate guard and cannot send the final itinerary before confirmed rebooking.
+
+## Context Continuity
+
+The demonstrated conversation preserves:
+
+- passenger identity
+- booking reference
+- original disruption
+- route and current flight
+- arrival deadline
+- selected alternative
+- confirmation state
+- final booking state
+- channel transitions
+
+The passenger does not need to repeat the booking reference or previous constraint while moving through the demonstrated journey.
+
+## Integration Readiness Dashboard
+
+The operations dashboard exposes backend-managed readiness states:
+
+- `CONNECTED`
+- `SIMULATED`
+- `NOT VERIFIED`
+- `ERROR`
+
+Readiness is not only cosmetic frontend state. The API server records verification evidence in durable JSON-backed storage and restores it across server restarts. Conversation and event state remain controlled demonstration state in memory.
+
+For multi-instance production deployment, shared durable storage such as DynamoDB would be appropriate. DynamoDB is not currently used as the live conversation store in this hackathon build.
+
+## Observability
+
+High-level operational events make the journey inspectable without exposing private model reasoning. The event and log surfaces include events such as:
+
+- message received
+- intent interpreted
+- booking retrieved
+- flight status checked
+- alternatives searched
+- alternative selected
+- confirmation requested
+- confirmation received
+- rebooking executed
+- itinerary generated
+- itinerary sent
+
+SurgeAir does not expose private chain-of-thought reasoning. Logs use sanitized destinations and record operational metadata such as provider, mode, region, status, and latency.
+
+## Technology Stack
+
+The repository currently uses:
+
+- TypeScript
+- React
+- Vite
+- Node.js
+- Express
+- AWS SDK for JavaScript v3
+- Amazon Bedrock Runtime
+- Amazon Bedrock AgentCore runtime integration
+- AWS End User Messaging SMS
+- Amazon SES
+- Zod-generated API validation
+- React Query-generated API hooks
+- pnpm workspaces
+- Replit
+
+## Repository Structure
 
 ```text
-Passenger
-  → Channel Adapter
-  → Message Orchestrator
-  → Conversation Repository
-  → Model Provider / SurgeAir Agent
-  → Airline Tool Registry
-  → Channel Adapter
-  → Passenger
+artifacts/
+├── api-server/       Express API, orchestration, providers, tools, and demo state
+├── surgeair-ai/      React/Vite operations dashboard and passenger simulator
+└── mockup-sandbox/   Isolated component preview workspace
+
+lib/
+├── api-spec/         OpenAPI source of truth
+├── api-client-react/ Generated React Query hooks
+├── api-zod/          Generated Zod request/response validation
+└── db/               Shared database package
+
+scripts/              Workspace utility scripts
 ```
 
-Incoming messages use one normalized structure regardless of channel. The in-memory conversation repository preserves the passenger, booking, route, extracted constraint, selected flight, confirmation state, messages, and channel transitions. The internal event store records important workflow events in a form that can later feed AWS analytics or event infrastructure.
+The main API server source is organized around channel adapters, conversation state, model providers, orchestration, observability, routes, tools, and the SurgeAir domain.
 
-The architecture is informed by the patterns in:
+## Running Locally
 
-- AWS Chat Orchestrator for Generative AI Conversations
-- AWS Engagement Database and Analytics Sample for End User Messaging and SES
-- AWS Generative AI Email Categorization using SES Mail Manager
-
-Their separation of channel ingress, orchestration, state, model execution, tools, delivery, and observability is used as guidance; no sample code is copied directly.
-
-Configuration placeholders are documented in `.env.example`. They contain no credentials and all AWS feature flags default to disabled.
-
-## Amazon Bedrock Integration
-
-SurgeAir supports two interchangeable language-understanding providers behind the same `ModelProvider` interface:
-
-- `LocalModelProvider` is the default deterministic development provider and remains the safe fallback.
-- `BedrockModelProvider` uses the Amazon Bedrock Converse API with Amazon Nova 2 Lite to extract passenger intent, destination, arrival constraints, selected flight, recommended tool, and confirmation requirements.
-
-Provider selection is controlled by `MODEL_PROVIDER`:
-
-```text
-MODEL_PROVIDER=local
-```
-
-Set it to `bedrock` only after the connectivity test succeeds. The server-side Bedrock configuration uses:
-
-- `AWS_BEARER_TOKEN_BEDROCK` — secret bearer token; never exposed to the frontend or committed
-- `AWS_REGION` — Bedrock region, currently `eu-north-1`
-- `BEDROCK_MODEL_ID` — inference profile, currently `eu.amazon.nova-2-lite-v1:0`
-- `MODEL_PROVIDER` — `local` or `bedrock`; defaults to `local`
-
-Run the safe connectivity check with:
+Install dependencies with pnpm:
 
 ```bash
+pnpm install
+```
+
+Run the API server and dashboard in separate terminals, or use the managed Replit workflows:
+
+```bash
+pnpm --filter @workspace/api-server run dev
+pnpm --filter @workspace/surgeair-ai run dev
+```
+
+The root scripts provide workspace checks:
+
+```bash
+pnpm run typecheck
+pnpm run build
+```
+
+The default `.env.example` configuration keeps the model and outbound providers local or simulated. Live provider operation requires the corresponding server-side configuration and AWS permissions; secrets must remain outside frontend code.
+
+### Environment variable names
+
+The repository's `.env.example` defines these configuration names:
+
+```text
+AWS_REGION
+BEDROCK_MODEL_ID
+BEDROCK_VERIFIED
+AGENTCORE_VERIFIED
+AGENTCORE_RUNTIME_NAME
+MODEL_PROVIDER
+CONVERSATION_TABLE_NAME
+SMS_PROVIDER
+SMS_VERIFIED
+AWS_SMS_ENABLED
+AWS_SMS_ORIGINATION_NUMBER
+AWS_SMS_SIMULATOR_DESTINATION
+SMS_TEST_TOKEN
+SMS_TEST_MIN_INTERVAL_MS
+AWS_WHATSAPP_ENABLED
+AWS_RCS_ENABLED
+AWS_SES_ENABLED
+EMAIL_PROVIDER
+SES_VERIFIED
+AWS_SES_FROM_EMAIL
+AWS_SES_TEST_DESTINATION
+EMAIL_TEST_MIN_INTERVAL_MS
+```
+
+Secret values are not documented or committed. In the verified environment, server-side secrets include:
+
+```text
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_BEARER_TOKEN_BEDROCK
+SMS_TEST_TOKEN
+SESSION_SECRET
+```
+
+Configuration names such as `AWS_REGION`, `BEDROCK_MODEL_ID`, `MODEL_PROVIDER`, `SMS_PROVIDER`, `AWS_SMS_ORIGINATION_NUMBER`, `AWS_SMS_SIMULATOR_DESTINATION`, `SMS_TEST_MIN_INTERVAL_MS`, `EMAIL_PROVIDER`, `AWS_SES_FROM_EMAIL`, and `AWS_SES_TEST_DESTINATION` are not credentials, but their values should still be managed outside the frontend. Do not place real phone numbers or email addresses in documentation.
+
+## Testing
+
+The API server defines these checks:
+
+```bash
+pnpm --filter @workspace/api-server test
+pnpm --filter @workspace/api-server run test:safety
+pnpm --filter @workspace/api-server run test:sms
+pnpm --filter @workspace/api-server run test:ses
+pnpm --filter @workspace/api-server run test:readiness
 pnpm --filter @workspace/api-server run test:bedrock
 ```
 
-Nova 2 Lite performs language understanding and decision extraction only. The SurgeAir backend remains authoritative for tool execution and booking mutations. Selecting a flight creates a pending confirmation state; the backend independently requires a matching pending selection and a later explicit confirmation before `rebookFlight` can change a booking.
+The existing coverage includes:
 
-## Safety boundaries
+- rebooking confirmation safety
+- premature itinerary blocking
+- Bedrock provider behavior and fallback handling
+- SMS provider success and failure handling
+- SES provider success and failure handling
+- simulated provider fallbacks
+- readiness persistence
+- orchestration behavior exercised by the demo flow
+- TypeScript typechecking
 
-- Rebooking requires explicit passenger confirmation.
-- The app uses simulated airline data only.
-- It does not process payments or collect passport information.
-- No credentials or secrets are exposed to the frontend.
+`test:bedrock` is a connectivity check that performs a live Bedrock operation when configured. It is not required for local-only development.
 
-## Hackathon use case
+## Final Demo Validation
 
-The demo shows a single passenger journey continuing across simulated SMS, WhatsApp, RCS, and email while maintaining one context. It combines AI-assisted intent and constraint handling with deterministic booking safeguards, making the prototype suitable for demonstrating a future AWS-native passenger recovery platform.
+The final end-to-end validation passed:
+
+| Stage | Verified state |
+| --- | --- |
+| Initial | SG4821 → SA204 → disrupted |
+| Constraint | Arrival before 18:00 |
+| Alternatives | SA218 and SA226 |
+| Selection | SA218 |
+| Before confirmation | Booking remained SA204 |
+| After explicit confirmation | Booking became SA218 |
+| Final itinerary | SA218, 11:30 → 14:40, Rebooked |
+| Delivery | Updated itinerary accepted through live Amazon SES |
+
+The final validation also confirmed that no itinerary was sent before explicit confirmation and that the dashboard exposed the disruption, conversation, channel transitions, tool activity, readiness states, and final booking state.
+
+## Security
+
+The current implementation:
+
+- keeps credentials outside frontend code
+- uses the AWS SDK default credential chain
+- does not commit credentials or secrets
+- does not use custom manual AWS signing
+- restricts SMS simulator sends to the approved simulator destination
+- uses a fixed SES test destination for controlled test sends
+- sanitizes operational logs
+- requires explicit confirmation before booking mutation
+- does not expose unrestricted SMS or email relay endpoints
+
+## Current Limitations
+
+These are boundaries of the current hackathon implementation:
+
+- WhatsApp is simulated.
+- RCS is simulated.
+- SMS uses the AWS Simulator rather than carrier delivery.
+- Readiness evidence uses local durable JSON storage.
+- Conversation and event state use controlled in-memory demonstration data.
+- Airline inventory and booking records are controlled demonstration data.
+- No production airline reservation-system integration is claimed.
+
+## Future Development
+
+Potential next steps include:
+
+- live AWS End User Messaging Social / WhatsApp integration
+- live RCS provisioning
+- DynamoDB conversation and readiness persistence
+- CloudWatch production observability
+- airline reservation-system integration
+- authentication and identity verification
+- expanded disruption workflows
+- production deployment architecture
+
+## Hackathon Value
+
+SurgeAir combines conversational AI, communications infrastructure, persistent context, tool execution, and explicit-action safety into a practical passenger recovery experience.
+
+The value is not only chatbot responses. The agent maintains state across a passenger journey and performs controlled operational actions while keeping authorization separate from intent interpretation.
+
+## Demo
+
+Use the running Replit preview to demonstrate the canonical flow:
+
+1. Show the SA204 disruption and initial SMS notification.
+2. Enter the arrival-before-18:00 constraint.
+3. Select SA218 from the alternatives.
+4. Show that the booking remains on SA204 while confirmation is pending.
+5. Confirm the rebooking.
+6. Show the final SA218 itinerary, readiness dashboard, operations log, and email delivery state.
+
+Demo video: Coming soon
+
+## License
+
+MIT, as declared in the root package metadata. No standalone `LICENSE` file is currently present.

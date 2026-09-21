@@ -12,7 +12,9 @@ import { InMemoryConversationRepository } from "../conversation/conversation-rep
 import { InMemoryEventStore, type SurgeAirEventType } from "../events/event-store";
 import { createModelProvider } from "../models/model-provider-factory";
 import { LocalOperationalLogger } from "../observability/operational-logger";
+import { JsonReadinessStateStore } from "../observability/readiness-state-store";
 import { MessageOrchestrator } from "../orchestration/message-orchestrator";
+import { resolve } from "node:path";
 
 export type Channel = "SMS" | "WhatsApp" | "RCS" | "Email";
 
@@ -175,8 +177,25 @@ const messages: MessageRecord[] = [
 ];
 
 const conversationId = "conv-sg4821-disruption";
-const operationalLogger = new LocalOperationalLogger();
 const awsReadinessConfig = getAwsReadinessConfig();
+const readinessStore = new JsonReadinessStateStore(
+  resolve(process.cwd(), "data/integration-readiness.json"),
+  {
+    bedrock: awsReadinessConfig.verified.bedrock,
+    agentCore: awsReadinessConfig.verified.agentCore,
+    sms: awsReadinessConfig.verified.sms,
+    ses: awsReadinessConfig.verified.ses,
+  },
+);
+const operationalLogger = new LocalOperationalLogger({
+  bedrockVerified: awsReadinessConfig.verified.bedrock,
+  bedrockModelId: awsReadinessConfig.bedrockModelId,
+  region: awsReadinessConfig.region,
+  smsVerified: awsReadinessConfig.verified.sms,
+  sesVerified: awsReadinessConfig.verified.ses,
+  agentCoreVerified: awsReadinessConfig.verified.agentCore,
+  store: readinessStore,
+});
 const smsChannel = new SmsChannel(operationalLogger, {
   provider: awsReadinessConfig.channels.sms.provider,
   region: awsReadinessConfig.region,
@@ -620,7 +639,26 @@ export const surgeAirStore = {
           ? {
               ...integration,
               status: operationalLogger.getBedrockVerificationStatus(),
+              ...(operationalLogger.getBedrockVerificationStatus() ===
+              "CONNECTED"
+                ? {
+                    detail: `${modelExecution.model} • ${awsReadinessConfig.region}`,
+                  }
+                : {}),
             }
+          : integration.service === "Bedrock AgentCore"
+            ? {
+                ...integration,
+                status: operationalLogger.getAgentCoreVerificationStatus(),
+                ...(operationalLogger.getAgentCoreVerificationStatus() ===
+                "CONNECTED"
+                  ? {
+                      detail: awsReadinessConfig.agentCoreRuntimeName
+                        ? `Runtime: ${awsReadinessConfig.agentCoreRuntimeName} • Live Runtime`
+                        : "Live Runtime",
+                    }
+                  : {}),
+              }
           : integration.service === "AWS End User Messaging SMS"
             ? {
                 ...integration,
@@ -629,7 +667,9 @@ export const surgeAirStore = {
                     ? "SIMULATED"
                     : operationalLogger.getSmsVerificationStatus(),
                 ...(awsReadinessConfig.channels.sms.simulatorDestination
-                  ? { detail: "AWS Simulator" }
+                  ? {
+                      detail: `AWS Simulator • ${awsReadinessConfig.region}`,
+                    }
                   : {}),
               }
             : integration.service === "Amazon SES"
@@ -641,7 +681,9 @@ export const surgeAirStore = {
                       : operationalLogger.getSesVerificationStatus(),
                   ...(operationalLogger.getSesVerificationStatus() ===
                   "CONNECTED"
-                    ? { detail: "Live Email" }
+                    ? {
+                        detail: `Live Email • ${awsReadinessConfig.region}`,
+                      }
                     : {}),
                 }
             : integration,

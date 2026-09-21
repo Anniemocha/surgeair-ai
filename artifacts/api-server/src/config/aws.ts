@@ -5,8 +5,15 @@ function enabled(value: string | undefined) {
 export interface AwsReadinessConfig {
   region: string;
   bedrockModelId: string | null;
+  agentCoreRuntimeName: string | null;
   conversationTableName: string | null;
   sesFromAddress: string | null;
+  verified: {
+    bedrock: boolean;
+    agentCore: boolean;
+    sms: boolean;
+    ses: boolean;
+  };
   channels: {
     sms: {
       provider: "aws" | "simulated";
@@ -45,8 +52,16 @@ export function getAwsReadinessConfig(): AwsReadinessConfig {
   return {
     region: process.env.AWS_REGION?.trim() || "eu-west-1",
     bedrockModelId: process.env.BEDROCK_MODEL_ID ?? null,
+    agentCoreRuntimeName:
+      process.env.AGENTCORE_RUNTIME_NAME?.trim() || "surgeair_ai_agent",
     conversationTableName: process.env.CONVERSATION_TABLE_NAME ?? null,
     sesFromAddress: sesFromEmail,
+    verified: {
+      bedrock: enabled(process.env.BEDROCK_VERIFIED),
+      agentCore: enabled(process.env.AGENTCORE_VERIFIED),
+      sms: enabled(process.env.SMS_VERIFIED),
+      ses: enabled(process.env.SES_VERIFIED),
+    },
     channels: {
       sms: {
         provider: smsProvider,
@@ -68,12 +83,10 @@ export function getAwsReadinessConfig(): AwsReadinessConfig {
 }
 
 export const integrationReadiness = [
-  { service: "Amazon Bedrock", status: "SIMULATED" },
-  { service: "Bedrock AgentCore", status: "SIMULATED" },
+  { service: "Amazon Bedrock", status: "NOT VERIFIED" },
+  { service: "Bedrock AgentCore", status: "NOT VERIFIED" },
   { service: "AWS End User Messaging SMS", status: "NOT VERIFIED" },
-  { service: "End User Messaging RCS", status: "SIMULATED" },
-  { service: "End User Messaging Social", status: "SIMULATED" },
   { service: "Amazon SES", status: "NOT VERIFIED" },
-  { service: "DynamoDB", status: "LOCAL" },
-  { service: "CloudWatch", status: "LOCAL LOGGING" },
+  { service: "WhatsApp", status: "SIMULATED" },
+  { service: "RCS", status: "SIMULATED" },
 ] as const;

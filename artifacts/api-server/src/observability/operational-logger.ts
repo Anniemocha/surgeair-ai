@@ -1,4 +1,9 @@
 import { logger } from "../lib/logger";
+import type {
+  IntegrationReadinessKey,
+  ReadinessEvidenceSource,
+  ReadinessStateStore,
+} from "./readiness-state-store";
 
 export type OperationalLogType =
   | "incoming_message"
@@ -38,6 +43,16 @@ export type BedrockVerificationStatus = "CONNECTED" | "NOT VERIFIED" | "ERROR";
 export type SmsVerificationStatus = "CONNECTED" | "NOT VERIFIED" | "ERROR";
 export type SesVerificationStatus = "CONNECTED" | "NOT VERIFIED" | "ERROR";
 
+export interface InitialReadinessState {
+  bedrockVerified?: boolean;
+  bedrockModelId?: string | null;
+  region?: string | null;
+  smsVerified?: boolean;
+  sesVerified?: boolean;
+  agentCoreVerified?: boolean;
+  store?: ReadinessStateStore;
+}
+
 export interface OperationalLogger {
   record(
     type: OperationalLogType,
@@ -59,8 +74,42 @@ export class LocalOperationalLogger implements OperationalLogger {
     "NOT VERIFIED";
   private smsVerificationStatus: SmsVerificationStatus = "NOT VERIFIED";
   private sesVerificationStatus: SesVerificationStatus = "NOT VERIFIED";
+  private agentCoreVerificationStatus: BedrockVerificationStatus =
+    "NOT VERIFIED";
 
   private pendingBedrockFallback = false;
+  private readonly readinessStore?: ReadinessStateStore;
+
+  constructor(initialState: InitialReadinessState = {}) {
+    this.readinessStore = initialState.store;
+    this.bedrockVerificationStatus = this.initialStatus(
+      "bedrock",
+      initialState.bedrockVerified,
+    );
+    this.agentCoreVerificationStatus = this.initialStatus(
+      "agentCore",
+      initialState.agentCoreVerified,
+    );
+    this.smsVerificationStatus = this.initialStatus(
+      "sms",
+      initialState.smsVerified,
+    );
+    this.sesVerificationStatus = this.initialStatus(
+      "ses",
+      initialState.sesVerified,
+    );
+    if (this.bedrockVerificationStatus === "CONNECTED") {
+      this.bedrockVerificationStatus = "CONNECTED";
+      this.latestModelExecution = {
+        provider: "amazon-bedrock",
+        model: modelDisplayName(initialState.bedrockModelId),
+        region: initialState.region ?? null,
+        status: "connected",
+        latencyMs: null,
+        fallbackReason: null,
+      };
+    }
+  }
 
   record(
     type: OperationalLogType,
@@ -86,24 +135,28 @@ export class LocalOperationalLogger implements OperationalLogger {
     return this.sesVerificationStatus;
   }
 
+  getAgentCoreVerificationStatus(): BedrockVerificationStatus {
+    return this.agentCoreVerificationStatus;
+  }
+
   private captureModelExecution(
     type: OperationalLogType,
     details: Record<string, string | number | boolean | null>,
   ) {
     if (type === "sms_send_succeeded") {
-      this.smsVerificationStatus = "CONNECTED";
+      this.setStatus("sms", "CONNECTED", "runtime-success");
       return;
     }
     if (type === "sms_send_failed") {
-      this.smsVerificationStatus = "ERROR";
+      this.setStatus("sms", "ERROR", "runtime-failure");
       return;
     }
     if (type === "ses_send_succeeded") {
-      this.sesVerificationStatus = "CONNECTED";
+      this.setStatus("ses", "CONNECTED", "runtime-success");
       return;
     }
     if (type === "ses_send_failed") {
-      this.sesVerificationStatus = "ERROR";
+      this.setStatus("ses", "ERROR", "runtime-failure");
       return;
     }
 
@@ -121,7 +174,7 @@ export class LocalOperationalLogger implements OperationalLogger {
           latencyMs: numberValue(details.latencyMs),
           fallbackReason: null,
         };
-        this.bedrockVerificationStatus = "CONNECTED";
+        this.setStatus("bedrock", "CONNECTED", "runtime-success");
         this.pendingBedrockFallback = false;
       } else if (status === "fallback") {
         this.latestModelExecution = {
@@ -132,7 +185,7 @@ export class LocalOperationalLogger implements OperationalLogger {
           latencyMs: numberValue(details.latencyMs),
           fallbackReason: "Bedrock unavailable",
         };
-        this.bedrockVerificationStatus = "ERROR";
+        this.setStatus("bedrock", "ERROR", "runtime-failure");
         this.pendingBedrockFallback = true;
       }
       return;
@@ -152,6 +205,25 @@ export class LocalOperationalLogger implements OperationalLogger {
         fallbackReason: null,
       };
     }
+  }
+
+  private initialStatus(
+    key: IntegrationReadinessKey,
+    verified: boolean | undefined,
+  ): BedrockVerificationStatus {
+    return this.readinessStore?.get(key) ?? (verified ? "CONNECTED" : "NOT VERIFIED");
+  }
+
+  private setStatus(
+    key: IntegrationReadinessKey,
+    status: BedrockVerificationStatus,
+    source: ReadinessEvidenceSource,
+  ) {
+    if (key === "bedrock") this.bedrockVerificationStatus = status;
+    if (key === "sms") this.smsVerificationStatus = status;
+    if (key === "ses") this.sesVerificationStatus = status;
+    if (key === "agentCore") this.agentCoreVerificationStatus = status;
+    this.readinessStore?.set(key, status, source);
   }
 }
 

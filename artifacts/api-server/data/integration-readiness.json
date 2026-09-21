@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "integrations": {
+    "bedrock": {
+      "status": "CONNECTED",
+      "source": "verified-live-operation"
+    },
+    "agentCore": {
+      "status": "CONNECTED",
+      "source": "verified-live-operation"
+    },
+    "sms": {
+      "status": "CONNECTED",
+      "source": "verified-live-operation"
+    },
+    "ses": {
+      "status": "CONNECTED",
+      "source": "verified-live-operation"
+    }
+  }
+}

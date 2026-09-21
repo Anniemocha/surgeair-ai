@@ -70,27 +70,29 @@ export class AwsSesEmailProvider {
     textBody: string,
     htmlBody?: string,
   ): Promise<AwsSesDeliveryResult> {
-    const destination = normalizeEmail(recipient, "recipient");
-    const fromEmail = normalizeEmail(this.fromEmail, "sender");
-    const normalizedSubject = subject.trim();
-    const normalizedText = textBody.trim();
-    const normalizedHtml = htmlBody?.trim() || undefined;
-    if (!normalizedSubject || normalizedSubject.length > 998) {
-      throw new Error("Email subject must contain between 1 and 998 characters.");
-    }
-    if (!normalizedText) {
-      throw new Error("Email text body is required.");
-    }
-
     const startedAt = Date.now();
-    this.logger.record("ses_send_started", {
-      provider: this.provider,
-      mode: this.mode,
-      destination: maskEmailAddress(destination),
-      region: this.region,
-    });
+    let destination = recipient.trim();
 
     try {
+      destination = normalizeEmail(recipient, "recipient");
+      const fromEmail = normalizeEmail(this.fromEmail, "sender");
+      const normalizedSubject = subject.trim();
+      const normalizedText = textBody.trim();
+      const normalizedHtml = htmlBody?.trim() || undefined;
+      if (!normalizedSubject || normalizedSubject.length > 998) {
+        throw new Error(
+          "Email subject must contain between 1 and 998 characters.",
+        );
+      }
+      if (!normalizedText) {
+        throw new Error("Email text body is required.");
+      }
+      this.logger.record("ses_send_started", {
+        provider: this.provider,
+        mode: this.mode,
+        destination: maskEmailAddress(destination),
+        region: this.region,
+      });
       const response = await this.client.send(
         new SendEmailCommand({
           FromEmailAddress: fromEmail,

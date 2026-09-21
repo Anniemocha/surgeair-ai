@@ -94,6 +94,10 @@ export class SmsChannel implements ChannelAdapter {
       return this.simulated.sendMessage(message);
     }
     if (!this.simulatorDestination) {
+      this.logger.record("sms_send_failed", {
+        provider: "aws-end-user-messaging-sms",
+        errorName: "ConfigurationError",
+      });
       throw new Error(
         "AWS_SMS_SIMULATOR_DESTINATION is required for AWS SMS delivery.",
       );
@@ -127,6 +131,10 @@ export class SmsChannel implements ChannelAdapter {
       throw new Error("AWS SMS provider is not selected.");
     }
     if (!this.simulatorDestination) {
+      this.logger.record("sms_send_failed", {
+        provider: "aws-end-user-messaging-sms",
+        errorName: "ConfigurationError",
+      });
       throw new Error(
         "AWS_SMS_SIMULATOR_DESTINATION is required for the SMS test.",
       );
@@ -261,6 +269,10 @@ export class EmailChannel implements ChannelAdapter {
       throw new Error("Amazon SES provider is not selected.");
     }
     if (!this.testDestination) {
+      this.logger.record("ses_send_failed", {
+        provider: "amazon-ses",
+        errorName: "ConfigurationError",
+      });
       throw new Error(
         "AWS_SES_TEST_DESTINATION is required for Amazon SES delivery.",
       );

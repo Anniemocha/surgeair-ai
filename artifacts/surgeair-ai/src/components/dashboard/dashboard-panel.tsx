@@ -43,6 +43,35 @@ function modelStatusLabel(status: string) {
   }
 }
 
+function readinessStyle(status: string) {
+  switch (status.toUpperCase()) {
+    case "CONNECTED":
+      return {
+        icon: "text-emerald-600 dark:text-emerald-500",
+        card: "bg-emerald-50/50 border-emerald-100 dark:bg-emerald-950/10 dark:border-emerald-900/30",
+        text: "text-emerald-700/80 dark:text-emerald-400/80",
+      };
+    case "SIMULATED":
+      return {
+        icon: "text-sky-600 dark:text-sky-400",
+        card: "bg-sky-50/50 border-sky-100 dark:bg-sky-950/10 dark:border-sky-900/30",
+        text: "text-sky-700/80 dark:text-sky-400/80",
+      };
+    case "ERROR":
+      return {
+        icon: "text-destructive",
+        card: "bg-destructive/5 border-destructive/20",
+        text: "text-destructive/80",
+      };
+    default:
+      return {
+        icon: "text-amber-600 dark:text-amber-400",
+        card: "bg-amber-50/50 border-amber-100 dark:bg-amber-950/10 dark:border-amber-900/30",
+        text: "text-amber-700/80 dark:text-amber-400/80",
+      };
+  }
+}
+
 interface DashboardPanelProps {
   dashboard: Dashboard;
 }
@@ -251,27 +280,24 @@ export function DashboardPanel({ dashboard }: DashboardPanelProps) {
             <CardContent className="pt-5">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {integrationStatus.map((integration, idx) => {
-                   const isHealthy = ['HEALTHY', 'READY', 'ONLINE', 'ACTIVE', 'CONNECTED'].includes(integration.status.toUpperCase());
+                   const style = readinessStyle(integration.status);
+                   const isConnected = integration.status.toUpperCase() === "CONNECTED";
                   return (
                     <div
                       key={idx}
-                      className={`flex flex-col gap-1 p-3 rounded-lg border transition-colors ${
-                        isHealthy ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-950/10 dark:border-emerald-900/30' : 'bg-destructive/5 border-destructive/20'
-                      }`}
+                       className={`flex flex-col gap-1 p-3 rounded-lg border transition-colors ${style.card}`}
                     >
                       <div className="flex items-center gap-2">
-                        {isHealthy ? (
-                          <CheckCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-500 shrink-0" />
+                         {isConnected ? (
+                           <CheckCircle className={`h-3.5 w-3.5 shrink-0 ${style.icon}`} />
                         ) : (
-                          <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                           <AlertCircle className={`h-3.5 w-3.5 shrink-0 ${style.icon}`} />
                         )}
                         <span className="text-xs font-semibold leading-tight line-clamp-1 truncate" title={integration.service}>
                           {integration.service}
                         </span>
                       </div>
-                      <span className={`text-[10px] uppercase tracking-wider font-medium pl-5 ${
-                        isHealthy ? 'text-emerald-700/80 dark:text-emerald-400/80' : 'text-destructive/80'
-                      }`}>
+                       <span className={`text-[10px] uppercase tracking-wider font-medium pl-5 ${style.text}`}>
                         {integration.status}
                       </span>
                       {integration.detail && (

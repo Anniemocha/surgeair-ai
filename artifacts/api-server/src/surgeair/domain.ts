@@ -519,8 +519,23 @@ export const surgeAirStore = {
         currentIntent: stored.detectedIntent,
         currentAgentState: stored.currentAgentState,
         lastToolCalled: stored.lastToolCalled,
+        modelProvider: operationalLogger.getLatestModelExecution().provider,
+        model: operationalLogger.getLatestModelExecution().model,
+        region: operationalLogger.getLatestModelExecution().region,
+        modelStatus: operationalLogger.getLatestModelExecution().status,
+        modelLatencyMs:
+          operationalLogger.getLatestModelExecution().latencyMs,
+        modelFallbackReason:
+          operationalLogger.getLatestModelExecution().fallbackReason,
       },
-      integrationStatus: [...integrationReadiness],
+      integrationStatus: integrationReadiness.map((integration) =>
+        integration.service === "Amazon Bedrock"
+          ? {
+              ...integration,
+              status: operationalLogger.getBedrockVerificationStatus(),
+            }
+          : integration,
+      ),
     };
   },
 };

@@ -25,6 +25,7 @@ export interface PassengerInterpretation {
   requiresConfirmation: boolean;
   nextAction: string;
   provider: "local" | "amazon-bedrock";
+  fallbackReason: string | null;
 }
 
 export interface ModelProvider {
@@ -93,6 +94,7 @@ export class LocalModelProvider implements ModelProvider {
             ? "Verify a pending rebooking before invoking the rebooking tool."
             : "Search for flights matching the passenger constraint.",
       provider: this.provider,
+      fallbackReason: null,
     };
   }
 

@@ -244,7 +244,7 @@ components:
             $ref: "#/components/schemas/IntegrationReadiness"
     OrchestrationState:
       type: object
-      required: [conversationId, currentChannel, previousChannel, currentIntent, currentAgentState, lastToolCalled]
+       required: [conversationId, currentChannel, previousChannel, currentIntent, currentAgentState, lastToolCalled, modelProvider, model, region, modelStatus, modelLatencyMs, modelFallbackReason]
       properties:
         conversationId: { type: string }
         currentChannel: { type: string }
@@ -252,6 +252,12 @@ components:
         currentIntent: { type: ["string", "null"] }
         currentAgentState: { type: string }
         lastToolCalled: { type: ["string", "null"] }
+         modelProvider: { type: string }
+         model: { type: string }
+         region: { type: ["string", "null"] }
+         modelStatus: { type: string }
+         modelLatencyMs: { type: ["integer", "null"] }
+         modelFallbackReason: { type: ["string", "null"] }
     IntegrationReadiness:
       type: object
       required: [service, status]

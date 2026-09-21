@@ -26,6 +26,23 @@ function displayTime(value: string) {
   return Number.isNaN(parsed.getTime()) ? value : format(parsed, "HH:mm:ss");
 }
 
+function providerLabel(provider: string) {
+  return provider === "amazon-bedrock" ? "Amazon Bedrock" : "Local Model";
+}
+
+function modelStatusLabel(status: string) {
+  switch (status) {
+    case "connected":
+      return "Connected / Successful";
+    case "fallback":
+      return "Local / Fallback";
+    case "error":
+      return "Error";
+    default:
+      return "Local / Simulation";
+  }
+}
+
 interface DashboardPanelProps {
   dashboard: Dashboard;
 }
@@ -189,6 +206,36 @@ export function DashboardPanel({ dashboard }: DashboardPanelProps) {
                     <span className="text-sm text-muted-foreground italic">No tools called yet</span>
                   )}
                 </div>
+
+                 <div className="sm:col-span-2 border-t border-border/50 pt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                   <div className="space-y-1.5">
+                     <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Model Provider</p>
+                     <p className="text-sm font-medium">{providerLabel(orchestration.modelProvider)}</p>
+                   </div>
+                   <div className="space-y-1.5">
+                     <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Model</p>
+                     <p className="text-sm font-medium">{orchestration.model}</p>
+                   </div>
+                   <div className="space-y-1.5">
+                     <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Region</p>
+                     <p className="text-sm font-medium">{orchestration.region || "—"}</p>
+                   </div>
+                   <div className="space-y-1.5">
+                     <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Model Status</p>
+                     <p className="text-sm font-medium">{modelStatusLabel(orchestration.modelStatus)}</p>
+                   </div>
+                   {orchestration.modelLatencyMs !== null && (
+                     <div className="space-y-1.5">
+                       <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Latency</p>
+                       <p className="text-sm font-medium">{orchestration.modelLatencyMs} ms</p>
+                     </div>
+                   )}
+                   {orchestration.modelFallbackReason && (
+                     <div className="col-span-2 md:col-span-4 text-xs text-destructive">
+                       Fallback: {orchestration.modelFallbackReason}
+                     </div>
+                   )}
+                 </div>
               </div>
             </CardContent>
           </Card>
@@ -204,7 +251,7 @@ export function DashboardPanel({ dashboard }: DashboardPanelProps) {
             <CardContent className="pt-5">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {integrationStatus.map((integration, idx) => {
-                  const isHealthy = ['HEALTHY', 'READY', 'ONLINE', 'ACTIVE'].includes(integration.status.toUpperCase());
+                   const isHealthy = ['HEALTHY', 'READY', 'ONLINE', 'ACTIVE', 'CONNECTED'].includes(integration.status.toUpperCase());
                   return (
                     <div
                       key={idx}

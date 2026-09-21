@@ -152,7 +152,12 @@ export class BedrockModelProvider implements ModelProvider {
         latencyMs: Date.now() - startedAt,
         errorCategory: category,
       });
-      return this.fallback.interpretPassengerRequest(content, context);
+      const fallbackInterpretation =
+        await this.fallback.interpretPassengerRequest(content, context);
+      return {
+        ...fallbackInterpretation,
+        fallbackReason: "Bedrock unavailable",
+      };
     }
   }
 
@@ -247,6 +252,7 @@ function toInterpretation(
       : decision.requires_confirmation,
     nextAction: decision.next_action,
     provider: "amazon-bedrock",
+    fallbackReason: null,
   };
 }
 

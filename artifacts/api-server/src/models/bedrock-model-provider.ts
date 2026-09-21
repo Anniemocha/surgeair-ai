@@ -148,6 +148,15 @@ export class BedrockModelProvider implements ModelProvider {
       return interpretation;
     } catch (error) {
       const category = classifyBedrockFailure(error);
+      const failure = getBedrockFailureDetails(error);
+      this.logger.record("bedrock_invocation_failed", {
+        errorName: failure.errorName,
+        errorCode: failure.errorCode,
+        httpStatus: failure.httpStatus,
+        modelId: this.modelId,
+        region: this.region,
+        fallbackActivated: true,
+      });
       this.logger.record("model_request", {
         provider: this.provider,
         modelId: this.modelId,
@@ -279,4 +288,29 @@ function classifyBedrockFailure(error: unknown) {
     return "authentication";
   }
   return "network_or_service_error";
+}
+
+function getBedrockFailureDetails(error: unknown): {
+  errorName: string;
+  errorCode: string | null;
+  httpStatus: number | null;
+} {
+  if (!error || typeof error !== "object") {
+    return { errorName: "UnknownError", errorCode: null, httpStatus: null };
+  }
+
+  const candidate = error as {
+    name?: unknown;
+    code?: unknown;
+    $metadata?: { httpStatusCode?: unknown };
+  };
+  return {
+    errorName:
+      typeof candidate.name === "string" ? candidate.name : "UnknownError",
+    errorCode: typeof candidate.code === "string" ? candidate.code : null,
+    httpStatus:
+      typeof candidate.$metadata?.httpStatusCode === "number"
+        ? candidate.$metadata.httpStatusCode
+        : null,
+  };
 }

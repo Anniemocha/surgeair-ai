@@ -1,0 +1,1 @@
+- [AgentCore secret-free bundling](agentcore-secret-free-bundling.md) — esbuild define only replaces exact env expressions; pass auth mode explicitly and scan the final bundle.

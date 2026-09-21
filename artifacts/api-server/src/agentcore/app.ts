@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { getModelProviderConfiguration } from "../models/model-provider-factory";
 import { surgeAirStore } from "../surgeair/domain";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -7,6 +8,24 @@ const BOOKING_REFERENCE = "SG4821";
 const ORIGIN = "LIS";
 const DESTINATION = "EDI";
 const MAX_BODY_BYTES = 1_048_576;
+
+const modelConfiguration = getModelProviderConfiguration({
+  requestedProvider: process.env.MODEL_PROVIDER,
+  region: process.env.AWS_REGION,
+  modelId: process.env.BEDROCK_MODEL_ID,
+  bearerToken: undefined,
+});
+process.stdout.write(
+  `${JSON.stringify({
+    event: "agentcore_model_configuration",
+    requestedProvider: modelConfiguration.requestedProvider,
+    selectedProvider: modelConfiguration.selectedProvider,
+    region: modelConfiguration.region,
+    modelIdConfigured: modelConfiguration.modelIdConfigured,
+    bearerTokenPresent: modelConfiguration.bearerTokenPresent,
+    credentialMode: modelConfiguration.credentialMode,
+  })}\n`,
+);
 
 interface InvocationPayload {
   input?: unknown;

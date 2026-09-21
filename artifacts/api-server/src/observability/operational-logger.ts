@@ -7,6 +7,7 @@ export type OperationalLogType =
   | "agent_decision"
   | "channel_transition"
   | "model_request"
+  | "bedrock_invocation_failed"
   | "rebooking_attempt"
   | "rebooking_success"
   | "rebooking_failure"

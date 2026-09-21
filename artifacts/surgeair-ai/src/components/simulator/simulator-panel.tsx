@@ -21,7 +21,8 @@ import {
   Send, 
   Bot, 
   MoreVertical,
-  Phone
+  Phone,
+  Plane
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,7 +64,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
       ? dashboard.selectedAlternative
       : null,
   );
-  const [, setRebookSuccess] = useState(
+  const [rebookSuccess, setRebookSuccess] = useState(
     dashboard.actionStatus === "COMPLETED",
   );
 
@@ -81,6 +82,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   const rebookFlight = useRebookFlight();
   const prepareRebooking = usePrepareRebooking();
   const sendItinerary = useSendItinerary();
+  const channels = ["SMS", "WhatsApp", "RCS", "Email"] as const;
 
   // Scroll to bottom on new message
   useEffect(() => {
@@ -178,7 +180,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
               confirmation: true
             }
           });
-          
+
           addMessage(`Great! I have confirmed your new flight ${awaitingConfirmationFor}.`, 'ai');
           
           // 2. Send Itinerary
@@ -192,11 +194,17 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
             });
             addMessage("I've also sent the updated itinerary to your email. Safe travels!", 'ai');
             setIsTyping(false);
+
+            // Refresh authoritative booking state before showing success.
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
+              queryClient.invalidateQueries({
+                queryKey: getGetBookingQueryKey(
+                  dashboard.booking.bookingReference,
+                ),
+              }),
+            ]);
             setRebookSuccess(true);
-            
-            // Invalidate dashboard to update the left panel
-            queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetBookingQueryKey(dashboard.booking.bookingReference) });
           }, 1000);
 
         } catch (e) {
@@ -218,72 +226,120 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   };
 
   return (
-    <div className="flex-1 flex items-center justify-center p-4 lg:p-8 bg-slate-900 overflow-hidden">
+    <div className="flex-1 flex items-center justify-center p-4 lg:p-8 bg-muted/30 overflow-hidden relative">
       
+      {/* Decorative background elements */}
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-24 -right-24 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 -left-12 w-72 h-72 bg-secondary/10 rounded-full blur-3xl" />
+      </div>
+
       {/* Device Mockup */}
-      <div className="w-full max-w-[400px] h-full max-h-[850px] min-h-[550px] bg-background rounded-[3rem] shadow-2xl border-[14px] border-slate-800 relative flex flex-col overflow-hidden ring-4 ring-black/5">
+      <div className="w-full max-w-[380px] h-[90%] max-h-[800px] min-h-[600px] bg-background rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] border-[12px] border-slate-900 dark:border-slate-950 relative flex flex-col overflow-hidden ring-1 ring-white/10 z-10">
         
         {/* Dynamic Island / Notch area */}
-        <div className="absolute top-0 inset-x-0 h-7 flex justify-center z-50">
-          <div className="w-1/3 h-full bg-slate-800 rounded-b-2xl"></div>
+        <div className="absolute top-0 inset-x-0 h-6 flex justify-center z-50">
+          <div className="w-[120px] h-full bg-slate-900 dark:bg-slate-950 rounded-b-3xl"></div>
         </div>
 
         {/* Status Bar */}
-        <div className="h-12 bg-background/95 backdrop-blur-md flex items-center justify-between px-6 pt-2 text-[11px] font-medium z-40">
+        <div className="h-11 bg-background/95 backdrop-blur-md flex items-center justify-between px-6 pt-1 text-[11px] font-semibold z-40">
           <span>{format(new Date(), "HH:mm")}</span>
-          <div className="flex items-center gap-1.5">
-            <Signal className="h-3 w-3" />
+          <div className="flex items-center gap-1.5 opacity-80">
+            <Signal className="h-3 w-3 fill-current" />
             <Wifi className="h-3 w-3" />
-            <Battery className="h-4 w-4" />
+            <Battery className="h-4 w-4 fill-current" />
           </div>
         </div>
 
         {/* Chat Header */}
-        <div className="px-4 pb-3 pt-2 bg-background/95 backdrop-blur-md border-b flex items-center gap-3 z-40 shadow-sm">
-          <div className="bg-primary/10 p-2 rounded-full text-primary">
-            <Bot className="h-5 w-5" />
+        <div className="px-4 pb-3 pt-2 bg-background/95 backdrop-blur-md border-b border-border/50 flex items-center gap-3 z-40 shadow-sm relative">
+          <div className="bg-gradient-to-br from-primary to-secondary p-2 rounded-full text-white shadow-sm">
+            <Bot className="h-4 w-4" />
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-sm">SurgeAir Assistant</h3>
-            <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> Online
+            <h3 className="font-bold text-sm leading-none">SurgeAir Assistant</h3>
+            <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-1 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]"></span> Verified Airline Agent
             </p>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-            <Phone className="h-4 w-4 text-muted-foreground" />
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:bg-muted" aria-label="Audio call">
+            <Phone className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-            <MoreVertical className="h-4 w-4 text-muted-foreground" />
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:bg-muted" aria-label="More options">
+            <MoreVertical className="h-4 w-4" />
           </Button>
         </div>
 
+        <div
+          className="flex items-center gap-1.5 overflow-x-auto border-b border-border/50 bg-background px-3 py-2"
+          aria-label="Available conversation channels"
+          data-testid="list-conversation-channels"
+        >
+          {channels.map((channel) => {
+            const active =
+              dashboard.orchestration.currentChannel.toLowerCase() ===
+              channel.toLowerCase();
+            const simulated = channel === "WhatsApp" || channel === "RCS";
+            return (
+              <Badge
+                key={channel}
+                variant={active ? "default" : "outline"}
+                className="shrink-0 gap-1 text-[9px]"
+                data-testid={`badge-channel-${channel.toLowerCase()}`}
+              >
+                {channel}
+                {simulated && (
+                  <span className="font-normal opacity-70">Simulated</span>
+                )}
+              </Badge>
+            );
+          })}
+        </div>
+
         {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#E5DDD5]/20 dark:bg-background" ref={scrollRef}>
-          <div className="flex justify-center mb-6">
-            <Badge variant="outline" className="bg-background/50 text-[10px] font-normal">
-              Today • SMS Thread
+        <div className={`flex-1 overflow-y-auto p-4 space-y-5 bg-muted/20 dark:bg-background relative transition-all duration-300 ${showingOptions ? 'pb-44' : awaitingRequirement || awaitingConfirmationFor ? 'pb-20' : 'pb-4'}`} ref={scrollRef}>
+          <div className="flex justify-center mb-6 mt-2">
+            <Badge variant="outline" className="bg-background/80 text-[9px] uppercase tracking-widest font-bold border-border/50 text-muted-foreground backdrop-blur-sm" data-testid="badge-chat-channel">
+              {dashboard.orchestration.currentChannel} Thread
             </Badge>
           </div>
+
+          {rebookSuccess && (
+            <div className="mx-2 mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2" data-testid="banner-rebook-success">
+              <div className="bg-emerald-500 p-1.5 rounded-full text-white shrink-0 mt-0.5">
+                <Plane className="h-3 w-3" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Rebooking Confirmed</p>
+                <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5 font-medium">
+                  {dashboard.booking.bookingReference} is now booked on{" "}
+                  {dashboard.booking.currentFlight.flightNumber},{" "}
+                  {dashboard.booking.currentFlight.departure}–{dashboard.booking.currentFlight.arrival}.
+                </p>
+              </div>
+            </div>
+          )}
 
           {messages.map((msg, i) => {
             const isPassenger = msg.sender === 'passenger';
             return (
-              <div key={msg.id || i} className={`flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-300 ${isPassenger ? 'items-end' : 'items-start'}`}>
-                <div className="flex items-end gap-2 max-w-[85%]">
+              <div key={msg.id || i} className={`flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:duration-0 ${isPassenger ? 'items-end' : 'items-start'}`} data-testid={`message-${i}`}>
+                <div className={`flex items-end gap-2 max-w-[85%] ${isPassenger ? 'flex-row-reverse' : 'flex-row'}`}>
                   {!isPassenger && (
-                    <Avatar className="h-6 w-6 shrink-0 border border-border">
-                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">SA</AvatarFallback>
+                    <Avatar className="h-6 w-6 shrink-0 shadow-sm border border-primary/10">
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white text-[9px] font-bold">AI</AvatarFallback>
                     </Avatar>
                   )}
-                  <div className={`p-3 rounded-2xl text-sm shadow-sm whitespace-pre-wrap ${
+                  <div className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed shadow-sm whitespace-pre-wrap font-medium ${
                     isPassenger 
                       ? 'bg-secondary text-secondary-foreground rounded-br-sm' 
-                      : 'bg-card text-card-foreground border rounded-bl-sm'
+                      : 'bg-card text-card-foreground border border-border/50 rounded-bl-sm'
                   }`}>
                     {msg.text}
                   </div>
                 </div>
-                <span className={`text-[10px] text-muted-foreground mt-1 px-8 ${isPassenger ? 'text-right' : 'text-left'}`}>
+                <span className={`text-[9px] text-muted-foreground font-semibold mt-1 px-8 ${isPassenger ? 'text-right' : 'text-left'}`}>
                   {displayTime(msg.timestamp)}
                 </span>
               </div>
@@ -291,51 +347,78 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
           })}
           
           {isTyping && (
-            <div className="flex items-start gap-2">
-              <Avatar className="h-6 w-6 shrink-0 border border-border">
-                <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">SA</AvatarFallback>
+            <div className="flex items-start gap-2" data-testid="message-typing">
+              <Avatar className="h-6 w-6 shrink-0 shadow-sm border border-primary/10">
+                <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white text-[9px] font-bold">AI</AvatarFallback>
               </Avatar>
-              <div className="bg-card border p-3 rounded-2xl rounded-bl-sm shadow-sm flex gap-1">
-                <span className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce"></span>
-                <span className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+              <div className="bg-card border border-border/50 px-3.5 py-3 rounded-2xl rounded-bl-sm shadow-sm flex items-center gap-1.5 h-9">
+                <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce motion-reduce:animate-none"></span>
+                <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce motion-reduce:animate-none" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce motion-reduce:animate-none" style={{ animationDelay: '300ms' }}></span>
               </div>
             </div>
           )}
         </div>
 
         {/* Input Area */}
-        <div className="p-3 bg-background border-t pb-8 flex flex-col gap-3">
-          {/* Quick Replies */}
-          {awaitingRequirement && (
-            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 px-1">
-              <Button variant="outline" size="sm" className="h-7 text-xs rounded-full shrink-0" onClick={() => handleSend("I need to arrive before 18:00")}>
-                Arrive before 18:00
-              </Button>
-              <Button variant="outline" size="sm" className="h-7 text-xs rounded-full shrink-0" onClick={() => handleSend("Get me there by 20:00")}>
-                Arrive before 20:00
-              </Button>
-            </div>
-          )}
-          {showingOptions && alternativeFlights.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 px-1">
-              {alternativeFlights.map(f => (
-                <Button key={f.flightNumber} variant="outline" size="sm" className="h-7 text-xs rounded-full shrink-0" onClick={() => handleSend(`Book me on ${f.flightNumber}`)}>
-                  Select {f.flightNumber}
+        <div className="p-3 bg-background/95 backdrop-blur-md border-t border-border/50 pb-8 flex flex-col gap-3 z-40 relative">
+
+          {/* Quick Replies & Rich Actions */}
+          <div className="flex flex-col gap-2 w-full relative">
+            {awaitingRequirement && (
+              <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 px-1 w-full snap-x absolute -top-14 left-0 right-0">
+                <Button variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold rounded-full shrink-0 snap-center bg-card shadow-sm border-primary/20 text-primary hover:bg-primary/5 transition-transform active:scale-95" onClick={() => handleSend("I need to arrive before 18:00")} data-testid="btn-reply-1800">
+                  Arrive before 18:00
                 </Button>
-              ))}
-            </div>
-          )}
-          {awaitingConfirmationFor && (
-            <div className="flex gap-2 pb-1 px-1">
-              <Button variant="default" size="sm" className="h-7 text-xs rounded-full flex-1" onClick={() => handleSend("Yes, confirm")}>
-                Yes, confirm
-              </Button>
-              <Button variant="outline" size="sm" className="h-7 text-xs rounded-full flex-1" onClick={() => handleSend("No, show other options")}>
-                No, cancel
-              </Button>
-            </div>
-          )}
+                <Button variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold rounded-full shrink-0 snap-center bg-card shadow-sm border-primary/20 text-primary hover:bg-primary/5 transition-transform active:scale-95" onClick={() => handleSend("Get me there by 20:00")} data-testid="btn-reply-2000">
+                  Arrive before 20:00
+                </Button>
+              </div>
+            )}
+
+            {showingOptions && alternativeFlights.length > 0 && (
+              <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 px-1 w-full snap-x absolute -top-40 left-0 right-0">
+                {alternativeFlights.map(f => (
+                  <div key={f.flightNumber} className="shrink-0 w-[240px] snap-center bg-card border border-primary/10 rounded-[1.25rem] p-3 shadow-md flex flex-col gap-3 transition-transform hover:-translate-y-1" data-testid={`card-flight-option-${f.flightNumber}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="text-[13px] font-bold text-primary flex items-center gap-1.5">
+                        <Plane className="h-3.5 w-3.5" />
+                        {f.flightNumber}
+                      </div>
+                      <Badge variant="secondary" className="text-[9px] px-1.5 py-0 uppercase tracking-widest font-bold">
+                        {f.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between text-[13px]">
+                      <div className="flex flex-col">
+                        <span className="font-bold">{f.departure}</span>
+                        <span className="text-[10px] text-muted-foreground uppercase font-semibold">{f.origin}</span>
+                      </div>
+                      <div className="w-10 h-px bg-border border-dashed border-t-2"></div>
+                      <div className="flex flex-col text-right">
+                        <span className="font-bold">{f.arrival}</span>
+                        <span className="text-[10px] text-muted-foreground uppercase font-semibold">{f.destination}</span>
+                      </div>
+                    </div>
+                    <Button size="sm" className="w-full h-8 text-[11px] font-bold mt-1 rounded-xl transition-transform active:scale-95 bg-primary/10 text-primary hover:bg-primary hover:text-white" onClick={() => handleSend(`Book me on ${f.flightNumber}`)} data-testid={`btn-select-flight-${f.flightNumber}`}>
+                      Select Flight
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {awaitingConfirmationFor && (
+              <div className="flex gap-2 pb-1 px-1 w-full absolute -top-14 left-0 right-0">
+                <Button variant="default" size="sm" className="h-9 text-[11px] font-bold uppercase tracking-wide rounded-full flex-1 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-transform active:scale-95" onClick={() => handleSend("Yes, confirm")} data-testid="btn-confirm-rebook">
+                  Yes, confirm
+                </Button>
+                <Button variant="outline" size="sm" className="h-9 text-[11px] font-bold uppercase tracking-wide rounded-full flex-1 border-destructive/30 text-destructive hover:bg-destructive/10 transition-transform active:scale-95" onClick={() => handleSend("No, show other options")} data-testid="btn-cancel-rebook">
+                  No, cancel
+                </Button>
+              </div>
+            )}
+          </div>
 
           <div className="relative flex items-center">
             <Input
@@ -347,15 +430,18 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
                   handleSend();
                 }
               }}
-              placeholder={awaitingRequirement ? "Type 'I need to arrive before 18:00'..." : "Type a message..."}
-              className="pr-12 rounded-full bg-muted/50 border-transparent focus-visible:ring-1 focus-visible:ring-secondary focus-visible:border-transparent h-10 text-sm"
+              placeholder={awaitingRequirement ? "Type 'I need to arrive before 18:00'..." : "Message SurgeAir..."}
+              className="pr-12 rounded-full bg-muted border-border/50 focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-transparent h-11 text-[13px] font-medium placeholder:text-muted-foreground/60 shadow-sm"
               disabled={isTyping}
+              data-testid="input-chat"
             />
             <Button 
               size="icon" 
-              className="absolute right-1 h-8 w-8 rounded-full bg-secondary hover:bg-secondary/90 text-secondary-foreground"
+              className="absolute right-1.5 h-8 w-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-transform active:scale-95"
               onClick={() => void handleSend()}
               disabled={!inputValue.trim() || isTyping}
+              data-testid="btn-send-message"
+              aria-label="Send message"
             >
               <Send className="h-3.5 w-3.5 ml-0.5" />
             </Button>

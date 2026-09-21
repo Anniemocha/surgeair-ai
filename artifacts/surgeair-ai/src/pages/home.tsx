@@ -9,9 +9,10 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { DashboardPanel } from "@/components/dashboard/dashboard-panel";
 import { SimulatorPanel } from "@/components/simulator/simulator-panel";
-import { Loader2, RotateCcw } from "lucide-react";
+import { Loader2, Plane, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,19 +51,20 @@ function ResetDemoControl({
         <Button
           variant="outline"
           size="sm"
-          className="h-8 gap-2"
+          className="h-8 gap-2 border-primary/20 hover:bg-primary/5 hover:text-primary transition-colors"
           disabled={isResetting}
+          data-testid="btn-reset-demo"
         >
           {isResetting ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <RotateCcw className="h-3.5 w-3.5" />
           )}
-          <span className="hidden sm:inline">Reset Demo</span>
+          <span className="hidden sm:inline" data-testid="text-reset-demo">Reset Demo</span>
           <span className="sr-only sm:hidden">Reset Demo</span>
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      <AlertDialogContent data-testid="dialog-reset-demo">
         <AlertDialogHeader>
           <AlertDialogTitle>Reset the SurgeAir demo?</AlertDialogTitle>
           <AlertDialogDescription>
@@ -71,9 +73,10 @@ function ResetDemoControl({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isResetting} data-testid="btn-reset-cancel">Cancel</AlertDialogCancel>
           <AlertDialogAction
             disabled={isResetting}
+            data-testid="btn-reset-confirm"
             onClick={(event) => {
               event.preventDefault();
               void confirmReset();
@@ -151,8 +154,37 @@ export function Home() {
 
   return (
     <div className="min-h-[100dvh] w-full flex flex-col lg:flex-row bg-background">
+      <header className="order-0 flex min-h-16 items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 shadow-sm lg:hidden">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 font-bold tracking-tight text-primary">
+            <Plane className="h-5 w-5 shrink-0" />
+            <span>SurgeAir AI</span>
+          </div>
+          <p className="mt-0.5 truncate text-[10px] font-medium text-muted-foreground">
+            One conversation. Every channel. A smoother journey.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <ResetDemoControl
+            isResetting={resetDemo.isPending}
+            onReset={handleReset}
+          />
+          <Badge
+            variant={
+              dashboard.actionStatus === "COMPLETED"
+                ? "default"
+                : "secondary"
+            }
+            className="text-[9px] uppercase"
+            data-testid="badge-mobile-action-status"
+          >
+            {dashboard.actionStatus}
+          </Badge>
+        </div>
+      </header>
+
       {/* Left side: Operations Dashboard */}
-      <div className="w-full lg:w-1/2 xl:w-[55%] min-h-[50dvh] lg:h-[100dvh] border-b lg:border-b-0 lg:border-r border-border overflow-hidden flex flex-col bg-slate-50 dark:bg-slate-900/20">
+      <div className="order-2 w-full lg:order-1 lg:w-1/2 xl:w-[55%] min-h-[50dvh] lg:h-[100dvh] border-b lg:border-b-0 lg:border-r border-border overflow-hidden flex flex-col bg-background">
         <DashboardPanel
           dashboard={dashboard}
           headerAction={
@@ -165,7 +197,7 @@ export function Home() {
       </div>
 
       {/* Right side: Passenger Device Simulator */}
-      <div className="w-full lg:w-1/2 xl:w-[45%] min-h-[70dvh] lg:h-[100dvh] overflow-hidden flex flex-col relative">
+      <div className="order-1 w-full lg:order-2 lg:w-1/2 xl:w-[45%] min-h-[70dvh] lg:h-[100dvh] overflow-hidden flex flex-col relative bg-muted/30">
         <SimulatorPanel key={resetVersion} dashboard={dashboard} />
       </div>
     </div>

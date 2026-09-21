@@ -288,6 +288,106 @@ pnpm --filter @workspace/api-server run dev
 pnpm --filter @workspace/surgeair-ai run dev
 ```
 
+## Run SurgeAir AI with Your Own AWS Account
+
+The public SurgeAir demo is already connected to the project's controlled AWS-backed demonstration environment. Public users do not need AWS credentials, phone configuration, or email configuration, and they cannot replace those resources through the UI.
+
+Developers who want to run their own instance should clone the repository and connect resources from **their own AWS account**:
+
+```bash
+git clone https://github.com/Anniemocha/surgeair-ai.git
+cd surgeair-ai
+pnpm install
+cp .env.example .env
+```
+
+Keep `.env` private. Do not edit source files or Git commits to insert credentials, email addresses, phone numbers, tokens, or deployment-specific identifiers. On Replit, place private values in Secrets or environment configuration instead of tracked files.
+
+### Configure the environment
+
+Start from `.env.example`, which contains variable names and placeholders only. The main configuration groups are:
+
+| Area | Variables |
+| --- | --- |
+| AWS and model | `AWS_REGION`, `MODEL_PROVIDER`, `BEDROCK_MODEL_ID`, `BEDROCK_VERIFIED` |
+| AgentCore | `AGENTCORE_VERIFIED`, `AGENTCORE_RUNTIME_NAME` |
+| SMS | `SMS_PROVIDER`, `SMS_VERIFIED`, `AWS_SMS_ENABLED`, `AWS_SMS_ORIGINATION_NUMBER`, `AWS_SMS_SIMULATOR_DESTINATION`, `SMS_TEST_TOKEN`, `SMS_TEST_MIN_INTERVAL_MS` |
+| Email | `EMAIL_PROVIDER`, `SES_VERIFIED`, `AWS_SES_ENABLED`, `AWS_SES_FROM_EMAIL`, `AWS_SES_TEST_DESTINATION`, `EMAIL_TEST_MIN_INTERVAL_MS` |
+| Simulated channels | `AWS_WHATSAPP_ENABLED`, `AWS_RCS_ENABLED` |
+| Application | `SESSION_SECRET`, `CONVERSATION_TABLE_NAME` |
+
+Use a strong random value for `SESSION_SECRET` and `SMS_TEST_TOKEN`. Keep all deployment values private and use the AWS SDK's normal credential provider chain with credentials for your own account. Never hard-code or commit AWS access keys, secret access keys, bearer tokens, or session secrets.
+
+### Amazon Bedrock
+
+Choose an AWS region where the intended model or inference profile is available, request any required model access, set `BEDROCK_MODEL_ID`, and grant the runtime permission to invoke it.
+
+The reference SurgeAir deployment uses:
+
+- Region: `eu-north-1`
+- Model: Amazon Nova 2 Lite
+- Inference profile: `eu.amazon.nova-2-lite-v1:0`
+
+These identifiers describe the reference configuration; they are not credentials.
+
+### Bedrock AgentCore
+
+The reference deployment uses Bedrock AgentCore Runtime with runtime name `surgeair_ai_agent`. A developer who wants live AgentCore behavior must deploy and configure a runtime in their own AWS account, grant the required invocation permissions, and set their own AgentCore configuration. Cloning this repository does not grant access to the private reference runtime, account, or ARN.
+
+### AWS End User Messaging SMS
+
+The reference deployment uses the AWS End User Messaging SMS API with the **AWS SMS Simulator**. It does not demonstrate physical Nigerian carrier delivery.
+
+For a self-hosted instance:
+
+1. Configure AWS End User Messaging SMS in your AWS account.
+2. Use AWS simulator resources for development and testing.
+3. Store your originator and simulator destination privately in `AWS_SMS_ORIGINATION_NUMBER` and `AWS_SMS_SIMULATOR_DESTINATION`.
+4. Grant the runtime the appropriate `SendTextMessage` permission.
+5. Validate through the application's guarded integration flow.
+
+Production carrier delivery requires additional AWS provisioning and may involve regional, carrier, sender-registration, and regulatory requirements. The repository does not contain the reference deployment's simulator phone numbers.
+
+### Amazon SES
+
+For a self-hosted instance:
+
+1. Configure Amazon SES in your AWS account and chosen region.
+2. Verify an SES identity.
+3. Store the sender privately in `AWS_SES_FROM_EMAIL`.
+4. Configure an appropriate controlled recipient in `AWS_SES_TEST_DESTINATION`.
+5. Grant the runtime `ses:SendEmail` permission.
+6. Validate through the application's guarded integration flow.
+
+SES sandbox accounts can send only from verified identities and generally only to verified recipients until production access is approved. The repository does not contain the SurgeAir owner's email address.
+
+### WhatsApp and RCS
+
+The current reference deployment **simulates WhatsApp and RCS**. It does not claim either channel as a live AWS integration. Developers can replace the corresponding adapters with live channel providers when those services are available and configured in their own environment.
+
+### Public demo versus a self-hosted instance
+
+| Public SurgeAir demo | Self-hosted developer instance |
+| --- | --- |
+| Uses SurgeAir's deployed AWS-backed demo environment | Uses the developer's own AWS account |
+| Requires no AWS credentials from judges or users | Requires private credential-provider configuration |
+| Requires no personal phone or email setup | Uses the developer's own Bedrock, SMS, and SES resources |
+| Does not expose infrastructure replacement through the UI | Is controlled through the developer's private environment configuration |
+
+### Security checklist
+
+Never commit:
+
+- `.env` or other private environment files
+- AWS access keys or secret access keys
+- AWS bearer tokens
+- session secrets or integration-test tokens
+- personal deployment email addresses
+- deployment phone numbers
+- account identifiers, private ARNs, or authorization headers
+
+Keep `.env.example` limited to variable names and clearly fake placeholders.
+
 The root scripts provide workspace checks:
 
 ```bash

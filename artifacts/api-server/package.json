@@ -16,6 +16,7 @@
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1136.0",
     "@aws-sdk/client-pinpoint-sms-voice-v2": "^3.1136.0",
+    "@aws-sdk/client-sesv2": "^3.1136.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "cookie-parser": "^1.4.7",

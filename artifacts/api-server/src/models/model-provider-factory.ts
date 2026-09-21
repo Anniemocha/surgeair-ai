@@ -20,7 +20,7 @@ export function createModelProvider(
   const bearerToken = process.env.AWS_BEARER_TOKEN_BEDROCK;
   const modelId = process.env.BEDROCK_MODEL_ID;
   const region = process.env.AWS_REGION;
-  if (!bearerToken || !modelId || !region) {
+  if (!modelId || !region) {
     logger.record("error", {
       component: "model_provider",
       errorCategory: "missing_bedrock_configuration",

@@ -51,6 +51,7 @@ Thumbs.db
 # Local verification artifacts and uploaded instruction files
 /screenshots/
 attached_assets/Pasted-*.txt
+/artifacts/api-server/agentcore-output/
 
 # Local environment files; keep the placeholder template tracked
 .env

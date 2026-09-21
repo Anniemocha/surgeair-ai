@@ -1,4 +1,5 @@
 import {
+  type BedrockRuntimeClientConfig,
   BedrockRuntimeClient,
   ConverseCommand,
 } from "@aws-sdk/client-bedrock-runtime";
@@ -55,7 +56,7 @@ interface BedrockDecisionPayload {
 export interface BedrockModelProviderOptions {
   region: string;
   modelId: string;
-  bearerToken: string;
+  bearerToken?: string;
   logger: OperationalLogger;
   fallback?: ModelProvider;
   timeoutMs?: number;
@@ -77,11 +78,14 @@ export class BedrockModelProvider implements ModelProvider {
     this.logger = options.logger;
     this.fallback = options.fallback ?? new LocalModelProvider();
     this.timeoutMs = options.timeoutMs ?? 12_000;
-    this.client = new BedrockRuntimeClient({
+    const clientConfig: BedrockRuntimeClientConfig = {
       region: options.region,
-      token: { token: options.bearerToken },
       maxAttempts: 2,
-    });
+    };
+    if (options.bearerToken) {
+      clientConfig.token = { token: options.bearerToken };
+    }
+    this.client = new BedrockRuntimeClient(clientConfig);
   }
 
   async interpretPassengerRequest(

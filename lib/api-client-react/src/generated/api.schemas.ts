@@ -150,6 +150,37 @@ export interface ItineraryResult {
   sentAt: string;
 }
 
+export type SesDeliveryResultProvider = typeof SesDeliveryResultProvider[keyof typeof SesDeliveryResultProvider];
+
+
+export const SesDeliveryResultProvider = {
+  'amazon-ses': 'amazon-ses',
+} as const;
+
+export type SesDeliveryResultMode = typeof SesDeliveryResultMode[keyof typeof SesDeliveryResultMode];
+
+
+export const SesDeliveryResultMode = {
+  live: 'live',
+} as const;
+
+export type SesDeliveryResultStatus = typeof SesDeliveryResultStatus[keyof typeof SesDeliveryResultStatus];
+
+
+export const SesDeliveryResultStatus = {
+  accepted: 'accepted',
+} as const;
+
+export interface SesDeliveryResult {
+  success: true;
+  provider: SesDeliveryResultProvider;
+  mode: SesDeliveryResultMode;
+  messageId: string;
+  destination: string;
+  status: SesDeliveryResultStatus;
+  latencyMs: number;
+}
+
 export type SearchAlternativeFlightsParams = {
 origin: string;
 destination: string;

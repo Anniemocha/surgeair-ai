@@ -185,6 +185,14 @@ const smsChannel = new SmsChannel(operationalLogger, {
   simulatorDestination:
     awsReadinessConfig.channels.sms.simulatorDestination ?? undefined,
 });
+const emailChannel = new EmailChannel(operationalLogger, {
+  provider: awsReadinessConfig.channels.email.provider,
+  region: awsReadinessConfig.region,
+  fromEmail: awsReadinessConfig.channels.email.fromEmail ?? undefined,
+  testDestination:
+    awsReadinessConfig.channels.email.testDestination ?? undefined,
+});
+const simulatedItinerarySender = new SimulatedItinerarySender();
 const eventStore = new InMemoryEventStore();
 const conversationRepository = new InMemoryConversationRepository({
   ...conversation,
@@ -200,7 +208,7 @@ const messageOrchestrator = new MessageOrchestrator(
     smsChannel,
     new WhatsAppChannel(operationalLogger),
     new RcsChannel(operationalLogger),
-    new EmailChannel(operationalLogger),
+    emailChannel,
   ],
   conversationRepository,
   createModelProvider(operationalLogger),
@@ -489,14 +497,63 @@ export const surgeAirStore = {
     } as const;
   },
 
-  markItinerarySent(channel: Channel) {
+  async sendItinerary(reference: string, channel: Channel) {
+    if (reference.toUpperCase() !== booking.bookingReference) {
+      return null;
+    }
+    const stored = conversationRepository.get(conversationId);
+    if (
+      !stored ||
+      stored.confirmationStatus !== "Confirmed" ||
+      stored.rebookingStatus !== "Rebooked" ||
+      booking.status !== "Rebooked"
+    ) {
+      return {
+        error:
+          "The updated itinerary can only be sent after explicit rebooking confirmation.",
+      } as const;
+    }
+
+    if (channel !== "Email") {
+      const simulated = await simulatedItinerarySender.send(booking, channel);
+      this.markItinerarySent(channel, false);
+      return simulated;
+    }
+
+    const subject = `SurgeAir — Updated itinerary for ${booking.bookingReference}`;
+    const body = [
+      `Passenger: ${booking.passengerName}`,
+      `Booking: ${booking.bookingReference}`,
+      `Route: Lisbon (${booking.origin}) → Edinburgh (${booking.destination})`,
+      `New flight: ${booking.currentFlight.flightNumber}`,
+      `Departure: ${booking.currentFlight.departure}`,
+      `Arrival: ${booking.currentFlight.arrival}`,
+      `Status: ${booking.status}`,
+    ].join("\n");
+    const delivery = await emailChannel.sendItinerary(subject, body);
+    this.markItinerarySent("Email", delivery.provider === "amazon-ses");
+    return {
+      sent: delivery.success,
+      channel: "Email",
+      message:
+        delivery.provider === "amazon-ses"
+          ? `Updated itinerary for ${booking.bookingReference} accepted by Amazon SES.`
+          : `Updated itinerary for ${booking.bookingReference} simulated successfully.`,
+      sentAt: new Date().toISOString(),
+    };
+  },
+
+  markItinerarySent(channel: Channel, liveEmail = false) {
     conversation.previousChannel = conversation.currentChannel;
     conversation.currentChannel = channel;
     addActivity(
       "Updated itinerary generated",
       `Itinerary for ${booking.currentFlight.flightNumber}`,
     );
-    addActivity("Email delivery simulated", booking.bookingReference);
+    addActivity(
+      liveEmail ? "Email delivered via Amazon SES" : "Email delivery simulated",
+      booking.bookingReference,
+    );
     appendEvent("ITINERARY_GENERATED", "Email", {
       flightNumber: booking.currentFlight.flightNumber,
     });
@@ -517,6 +574,17 @@ export const surgeAirStore = {
 
   sendSmsSimulatorTest(message: string) {
     return smsChannel.sendSimulatorTest(message);
+  },
+
+  getEmailProviderMode() {
+    return awsReadinessConfig.channels.email.provider;
+  },
+
+  sendEmailIntegrationTest() {
+    return emailChannel.sendTest(
+      "SurgeAir SES Integration Test",
+      "SurgeAir AI successfully connected to Amazon SES. Booking SG4821 email delivery is ready.",
+    );
   },
 
   getDashboard() {
@@ -564,6 +632,18 @@ export const surgeAirStore = {
                   ? { detail: "AWS Simulator" }
                   : {}),
               }
+            : integration.service === "Amazon SES"
+              ? {
+                  ...integration,
+                  status:
+                    awsReadinessConfig.channels.email.provider === "simulated"
+                      ? "SIMULATED"
+                      : operationalLogger.getSesVerificationStatus(),
+                  ...(operationalLogger.getSesVerificationStatus() ===
+                  "CONNECTED"
+                    ? { detail: "Live Email" }
+                    : {}),
+                }
             : integration,
       ),
     };

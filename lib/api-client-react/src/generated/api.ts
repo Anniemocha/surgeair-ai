@@ -31,6 +31,7 @@ import type {
   RebookInput,
   RebookResult,
   SearchAlternativeFlightsParams,
+  SesDeliveryResult,
   SmsDeliveryResult,
   SmsTestInput
 } from './api.schemas';
@@ -805,5 +806,79 @@ export const useTestSmsIntegration = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getTestSmsIntegrationMutationOptions(options));
+    }
+
+export const getTestEmailIntegrationUrl = () => {
+
+
+
+
+  return `/api/integrations/email/test`
+}
+
+/**
+ * @summary Send a guarded Amazon SES test email to the configured destination
+ */
+export const testEmailIntegration = async ( options?: Parameters<typeof customFetch>[1]): Promise<SesDeliveryResult> => {
+
+  return customFetch<SesDeliveryResult>(getTestEmailIntegrationUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getTestEmailIntegrationMutationKey = () => ['testEmailIntegration'] as const;
+
+export const getTestEmailIntegrationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testEmailIntegration>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testEmailIntegration>>, TError,void, TContext> => {
+
+const mutationKey = getTestEmailIntegrationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testEmailIntegration>>, void> = () => {
+
+
+          return  testEmailIntegration(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestEmailIntegrationMutationResult = NonNullable<Awaited<ReturnType<typeof testEmailIntegration>>>
+
+    export type TestEmailIntegrationMutationError = ErrorType<void>
+
+
+    /**
+ * @summary Send a guarded Amazon SES test email to the configured destination
+ */
+export const useTestEmailIntegration = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testEmailIntegration>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testEmailIntegration>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getTestEmailIntegrationMutationOptions(options));
     }
 

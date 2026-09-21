@@ -13,6 +13,7 @@ import {
   SearchAlternativeFlightsResponse,
   SendItineraryBody,
   SendItineraryResponse,
+  TestEmailIntegrationResponse,
   TestSmsIntegrationBody,
   TestSmsIntegrationResponse,
 } from "@workspace/api-zod";
@@ -24,6 +25,10 @@ import {
 import { airlineTools } from "../surgeair/airline-tools";
 import { AwsSmsSendError } from "../channels/aws-sms-provider";
 import {
+  AwsSesSendError,
+  maskEmailAddress,
+} from "../channels/aws-ses-provider";
+import {
   isAuthorizedSmsTestRequest,
   SmsTestRateLimiter,
 } from "../channels/sms-test-guard";
@@ -31,6 +36,9 @@ import {
 const router: IRouter = Router();
 const smsTestRateLimiter = new SmsTestRateLimiter(
   Number(process.env.SMS_TEST_MIN_INTERVAL_MS ?? 30_000),
+);
+const emailTestRateLimiter = new SmsTestRateLimiter(
+  Number(process.env.EMAIL_TEST_MIN_INTERVAL_MS ?? 30_000),
 );
 router.get("/dashboard", (_req, res) => {
   res.json(GetDashboardResponse.parse(surgeAirStore.getDashboard()));
@@ -111,13 +119,56 @@ router.post("/itinerary/send", async (req, res) => {
       channel: string;
       message: string;
       sentAt: string;
-    } | null
+    } | { error: string } | null
   >("sendItinerary", input);
   if (!result) {
     res.status(404).json({ error: "Booking not found." });
     return;
   }
+  if ("error" in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
   res.json(SendItineraryResponse.parse(result));
+});
+
+router.post("/integrations/email/test", async (_req, res): Promise<void> => {
+  if (process.env.NODE_ENV === "production") {
+    res.status(404).json({ error: "Not found." });
+    return;
+  }
+  if (surgeAirStore.getEmailProviderMode() !== "aws") {
+    res.status(409).json({ error: "Amazon SES provider is not selected." });
+    return;
+  }
+  if (!emailTestRateLimiter.tryAcquire()) {
+    res.status(429).json({
+      error: "Wait before sending another Amazon SES test email.",
+    });
+    return;
+  }
+
+  try {
+    const result = await surgeAirStore.sendEmailIntegrationTest();
+    res.json(
+      TestEmailIntegrationResponse.parse({
+        ...result,
+        destination: maskEmailAddress(result.destination),
+      }),
+    );
+  } catch (error) {
+    if (error instanceof AwsSesSendError) {
+      res.status(502).json({
+        error:
+          "Amazon SES send failed. Valid IAM credentials, a verified sender, and ses:SendEmail permission are required.",
+      });
+      return;
+    }
+    res.status(503).json({
+      error:
+        "Amazon SES configuration is incomplete. Configure the sender and fixed test destination.",
+    });
+  }
 });
 
 router.post("/integrations/sms/test", async (req, res): Promise<void> => {

@@ -255,3 +255,17 @@ export const TestSmsIntegrationResponse = zod.object({
 })
 
 
+/**
+ * @summary Send a guarded Amazon SES test email to the configured destination
+ */
+export const TestEmailIntegrationResponse = zod.object({
+  "success": zod.literal(true),
+  "provider": zod.enum(['amazon-ses']),
+  "mode": zod.enum(['live']),
+  "messageId": zod.string(),
+  "destination": zod.string(),
+  "status": zod.enum(['accepted']),
+  "latencyMs": zod.number().int()
+})
+
+

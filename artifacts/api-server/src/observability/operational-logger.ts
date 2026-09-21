@@ -11,6 +11,9 @@ export type OperationalLogType =
   | "sms_send_started"
   | "sms_send_succeeded"
   | "sms_send_failed"
+  | "ses_send_started"
+  | "ses_send_succeeded"
+  | "ses_send_failed"
   | "rebooking_attempt"
   | "rebooking_success"
   | "rebooking_failure"
@@ -33,6 +36,7 @@ export interface ModelExecutionMetadata {
 
 export type BedrockVerificationStatus = "CONNECTED" | "NOT VERIFIED" | "ERROR";
 export type SmsVerificationStatus = "CONNECTED" | "NOT VERIFIED" | "ERROR";
+export type SesVerificationStatus = "CONNECTED" | "NOT VERIFIED" | "ERROR";
 
 export interface OperationalLogger {
   record(
@@ -54,6 +58,7 @@ export class LocalOperationalLogger implements OperationalLogger {
   private bedrockVerificationStatus: BedrockVerificationStatus =
     "NOT VERIFIED";
   private smsVerificationStatus: SmsVerificationStatus = "NOT VERIFIED";
+  private sesVerificationStatus: SesVerificationStatus = "NOT VERIFIED";
 
   private pendingBedrockFallback = false;
 
@@ -77,6 +82,10 @@ export class LocalOperationalLogger implements OperationalLogger {
     return this.smsVerificationStatus;
   }
 
+  getSesVerificationStatus(): SesVerificationStatus {
+    return this.sesVerificationStatus;
+  }
+
   private captureModelExecution(
     type: OperationalLogType,
     details: Record<string, string | number | boolean | null>,
@@ -87,6 +96,14 @@ export class LocalOperationalLogger implements OperationalLogger {
     }
     if (type === "sms_send_failed") {
       this.smsVerificationStatus = "ERROR";
+      return;
+    }
+    if (type === "ses_send_succeeded") {
+      this.sesVerificationStatus = "CONNECTED";
+      return;
+    }
+    if (type === "ses_send_failed") {
+      this.sesVerificationStatus = "ERROR";
       return;
     }
 

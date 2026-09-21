@@ -205,6 +205,26 @@ paths:
           description: AWS rejected the send request
         "503":
           description: AWS SMS configuration is incomplete
+  /integrations/email/test:
+    post:
+      operationId: testEmailIntegration
+      tags: [surgeair]
+      summary: Send a guarded Amazon SES test email to the configured destination
+      responses:
+        "200":
+          description: Amazon SES accepted the test email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SesDeliveryResult"
+        "409":
+          description: Amazon SES is not selected
+        "429":
+          description: Amazon SES test rate limit exceeded
+        "502":
+          description: Amazon SES rejected the send request
+        "503":
+          description: Amazon SES configuration is incomplete
 components:
   schemas:
     HealthStatus:
@@ -364,4 +384,15 @@ components:
         channel: { type: string }
         message: { type: string }
         sentAt: { type: string }
+    SesDeliveryResult:
+      type: object
+      required: [success, provider, mode, messageId, destination, status, latencyMs]
+      properties:
+        success: { type: boolean, enum: [true] }
+        provider: { type: string, enum: [amazon-ses] }
+        mode: { type: string, enum: [live] }
+        messageId: { type: string }
+        destination: { type: string }
+        status: { type: string, enum: [accepted] }
+        latencyMs: { type: integer }
 

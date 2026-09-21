@@ -28,6 +28,14 @@ if (
   throw new Error("Preparing a rebooking changed the booking.");
 }
 
+const prematureItinerary = await surgeAirStore.sendItinerary(
+  reference,
+  "Email",
+);
+if (!prematureItinerary || !("error" in prematureItinerary)) {
+  throw new Error("An itinerary was sent before explicit confirmation.");
+}
+
 const wrongFlightAttempt = surgeAirStore.rebook(reference, "SA226", true);
 if (
   "booking" in wrongFlightAttempt ||
@@ -53,6 +61,7 @@ process.stdout.write(
       beforeConfirmation: initialFlight,
       afterSelection: "SA204",
       mismatchedConfirmationBlocked: true,
+      prematureItineraryBlocked: true,
       afterExplicitConfirmation: finalFlight,
     },
     null,

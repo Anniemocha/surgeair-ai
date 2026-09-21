@@ -9,13 +9,11 @@ import {
 import { LocalOperationalLogger } from "../observability/operational-logger";
 import { ToolRegistry } from "../tools/tool-registry";
 import {
-  SimulatedItinerarySender,
   surgeAirStore,
   type Channel,
 } from "./domain";
 
 const registry = new ToolRegistry(new LocalOperationalLogger());
-const itinerarySender = new SimulatedItinerarySender();
 
 registry.register({
   name: "getBooking",
@@ -82,18 +80,11 @@ registry.register({
 
 registry.register({
   name: "sendItinerary",
-  description: "Generate and simulate delivery of an updated itinerary.",
+  description:
+    "Send an updated itinerary only after explicit rebooking confirmation.",
   inputSchema: SendItineraryBody,
-  execute: async ({ bookingReference, channel }) => {
-    const booking = surgeAirStore.getBooking(bookingReference);
-    if (!booking) {
-      return null;
-    }
-    const deliveryChannel = channel as Channel;
-    const result = await itinerarySender.send(booking, deliveryChannel);
-    surgeAirStore.markItinerarySent(deliveryChannel);
-    return result;
-  },
+  execute: ({ bookingReference, channel }) =>
+    surgeAirStore.sendItinerary(bookingReference, channel as Channel),
 });
 
 export const airlineTools = registry;

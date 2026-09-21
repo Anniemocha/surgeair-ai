@@ -50,11 +50,22 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   
   // Conversation state machine
   const [isTyping, setIsTyping] = useState(false);
-  const [awaitingRequirement, setAwaitingRequirement] = useState(true);
-  const [showingOptions, setShowingOptions] = useState(false);
+  const [awaitingRequirement, setAwaitingRequirement] = useState(
+    dashboard.orchestration.currentAgentState === "Disruption detected" ||
+      dashboard.orchestration.currentAgentState === "Booking retrieved",
+  );
+  const [showingOptions, setShowingOptions] = useState(
+    dashboard.orchestration.currentAgentState === "Presenting alternatives",
+  );
   const [alternativeFlights, setAlternativeFlights] = useState<Flight[]>([]);
-  const [awaitingConfirmationFor, setAwaitingConfirmationFor] = useState<Flight | null>(null);
-  const [rebookSuccess, setRebookSuccess] = useState(false);
+  const [awaitingConfirmationFor, setAwaitingConfirmationFor] = useState<string | null>(
+    dashboard.confirmationStatus === "Awaiting passenger confirmation"
+      ? dashboard.selectedAlternative
+      : null,
+  );
+  const [, setRebookSuccess] = useState(
+    dashboard.actionStatus === "COMPLETED",
+  );
 
   const [searchParams, setSearchParams] = useState({
     origin: dashboard.booking.origin,
@@ -146,7 +157,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
               newFlight: selected.flightNumber
             }
           });
-          setAwaitingConfirmationFor(selected);
+          setAwaitingConfirmationFor(selected.flightNumber);
           addMessage(`You've selected ${selected.flightNumber}. Shall I go ahead and confirm this rebooking for you? Reply YES or CONFIRM.`, 'ai');
           setShowingOptions(false);
           queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
@@ -163,12 +174,12 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
           await rebookFlight.mutateAsync({
             data: {
               bookingReference: dashboard.booking.bookingReference,
-              newFlight: awaitingConfirmationFor.flightNumber,
+              newFlight: awaitingConfirmationFor,
               confirmation: true
             }
           });
           
-          addMessage(`Great! I have confirmed your new flight ${awaitingConfirmationFor.flightNumber}.`, 'ai');
+          addMessage(`Great! I have confirmed your new flight ${awaitingConfirmationFor}.`, 'ai');
           
           // 2. Send Itinerary
           setTimeout(async () => {

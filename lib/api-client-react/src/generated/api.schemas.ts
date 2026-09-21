@@ -89,6 +89,34 @@ export interface Dashboard {
   integrationStatus: IntegrationReadiness[];
 }
 
+export type DemoResetResultBooking = typeof DemoResetResultBooking[keyof typeof DemoResetResultBooking];
+
+
+export const DemoResetResultBooking = {
+  SG4821: 'SG4821',
+} as const;
+
+export type DemoResetResultFlight = typeof DemoResetResultFlight[keyof typeof DemoResetResultFlight];
+
+
+export const DemoResetResultFlight = {
+  SA204: 'SA204',
+} as const;
+
+export type DemoResetResultStatus = typeof DemoResetResultStatus[keyof typeof DemoResetResultStatus];
+
+
+export const DemoResetResultStatus = {
+  Disrupted: 'Disrupted',
+} as const;
+
+export interface DemoResetResult {
+  success: true;
+  booking: DemoResetResultBooking;
+  flight: DemoResetResultFlight;
+  status: DemoResetResultStatus;
+}
+
 export interface SmsTestInput {
   /**
      * @minLength 1

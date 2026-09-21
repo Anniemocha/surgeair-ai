@@ -38,6 +38,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Dashboard"
+  /demo/reset:
+    post:
+      operationId: resetDemo
+      tags: [surgeair]
+      summary: Reset the current session's canonical SurgeAir demo state
+      description: Resets only the current browser session to SG4821 on delayed SA204. No request body or booking identifier is accepted.
+      responses:
+        "200":
+          description: Canonical demo state restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoResetResult"
+        "400":
+          description: Reset requests must not include a body
+        "403":
+          description: Cross-site reset requests are rejected
   /bookings/{bookingReference}:
     get:
       operationId: getBooking
@@ -298,6 +315,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/IntegrationReadiness"
+    DemoResetResult:
+      type: object
+      required: [success, booking, flight, status]
+      properties:
+        success: { type: boolean, enum: [true] }
+        booking: { type: string, enum: [SG4821] }
+        flight: { type: string, enum: [SA204] }
+        status: { type: string, enum: [Disrupted] }
     OrchestrationState:
       type: object
       required: [conversationId, currentChannel, previousChannel, currentIntent, currentAgentState, lastToolCalled, modelProvider, model, region, modelStatus, modelLatencyMs, modelFallbackReason]

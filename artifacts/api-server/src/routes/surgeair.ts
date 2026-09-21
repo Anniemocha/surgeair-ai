@@ -9,6 +9,7 @@ import {
   PrepareRebookingResponse,
   RebookFlightBody,
   RebookFlightResponse,
+  ResetDemoResponse,
   SearchAlternativeFlightsQueryParams,
   SearchAlternativeFlightsResponse,
   SendItineraryBody,
@@ -18,11 +19,11 @@ import {
   TestSmsIntegrationResponse,
 } from "@workspace/api-zod";
 import {
-  surgeAirStore,
   type BookingRecord,
   type FlightRecord,
+  type SurgeAirStore,
 } from "../surgeair/domain";
-import { airlineTools } from "../surgeair/airline-tools";
+import { createAirlineTools } from "../surgeair/airline-tools";
 import { AwsSmsSendError } from "../channels/aws-sms-provider";
 import {
   AwsSesSendError,
@@ -32,6 +33,7 @@ import {
   isAuthorizedSmsTestRequest,
   SmsTestRateLimiter,
 } from "../channels/sms-test-guard";
+import { isSameOriginRequest } from "../surgeair/demo-session";
 
 const router: IRouter = Router();
 const smsTestRateLimiter = new SmsTestRateLimiter(
@@ -41,12 +43,30 @@ const emailTestRateLimiter = new SmsTestRateLimiter(
   Number(process.env.EMAIL_TEST_MIN_INTERVAL_MS ?? 30_000),
 );
 router.get("/dashboard", (_req, res) => {
-  res.json(GetDashboardResponse.parse(surgeAirStore.getDashboard()));
+  res.json(GetDashboardResponse.parse(_req.surgeAirStore.getDashboard()));
+});
+
+router.post("/demo/reset", (req, res): void => {
+  if (!isSameOriginRequest(req)) {
+    res.status(403).json({ error: "Cross-site reset requests are not allowed." });
+    return;
+  }
+  if (
+    req.body !== undefined &&
+    (typeof req.body !== "object" ||
+      req.body === null ||
+      Array.isArray(req.body) ||
+      Object.keys(req.body).length > 0)
+  ) {
+    res.status(400).json({ error: "Reset Demo does not accept a request body." });
+    return;
+  }
+  res.json(ResetDemoResponse.parse(req.surgeAirStore.resetDemo()));
 });
 
 router.get("/bookings/:bookingReference", async (req, res) => {
   const { bookingReference } = GetBookingParams.parse(req.params);
-  const booking = await airlineTools.execute<BookingRecord | null>(
+  const booking = await createAirlineTools(req.surgeAirStore).execute<BookingRecord | null>(
     "getBooking",
     { bookingReference },
   );
@@ -62,7 +82,7 @@ router.get("/bookings/:bookingReference", async (req, res) => {
 router.get("/flights/alternatives", async (req, res) => {
   const { origin, destination, arrivalBefore } =
     SearchAlternativeFlightsQueryParams.parse(req.query);
-  const alternatives = await airlineTools.execute<FlightRecord[]>(
+  const alternatives = await createAirlineTools(req.surgeAirStore).execute<FlightRecord[]>(
     "searchAlternativeFlights",
     { origin, destination, arrivalBefore },
   );
@@ -71,7 +91,7 @@ router.get("/flights/alternatives", async (req, res) => {
 
 router.get("/flights/:flightNumber/status", async (req, res) => {
   const { flightNumber } = GetFlightStatusParams.parse(req.params);
-  const flight = await airlineTools.execute<FlightRecord | null>(
+  const flight = await createAirlineTools(req.surgeAirStore).execute<FlightRecord | null>(
     "getFlightStatus",
     { flightNumber },
   );
@@ -86,8 +106,8 @@ router.get("/flights/:flightNumber/status", async (req, res) => {
 
 router.post("/bookings/rebook", async (req, res) => {
   const input = RebookFlightBody.parse(req.body);
-  const result = await airlineTools.execute<
-    ReturnType<typeof surgeAirStore.rebook>
+  const result = await createAirlineTools(req.surgeAirStore).execute<
+    ReturnType<SurgeAirStore["rebook"]>
   >("rebookFlight", input);
 
   if (!("booking" in result)) {
@@ -101,8 +121,8 @@ router.post("/bookings/rebook", async (req, res) => {
 
 router.post("/bookings/rebook/prepare", async (req, res) => {
   const input = PrepareRebookingBody.parse(req.body);
-  const result = await airlineTools.execute<
-    ReturnType<typeof surgeAirStore.prepareRebooking>
+  const result = await createAirlineTools(req.surgeAirStore).execute<
+    ReturnType<SurgeAirStore["prepareRebooking"]>
   >("prepareRebooking", input);
   if ("error" in result) {
     res.status(404).json({ error: result.error });
@@ -113,7 +133,7 @@ router.post("/bookings/rebook/prepare", async (req, res) => {
 
 router.post("/itinerary/send", async (req, res) => {
   const input = SendItineraryBody.parse(req.body);
-  const result = await airlineTools.execute<
+  const result = await createAirlineTools(req.surgeAirStore).execute<
     {
       sent: boolean;
       channel: string;
@@ -132,12 +152,12 @@ router.post("/itinerary/send", async (req, res) => {
   res.json(SendItineraryResponse.parse(result));
 });
 
-router.post("/integrations/email/test", async (_req, res): Promise<void> => {
+router.post("/integrations/email/test", async (req, res): Promise<void> => {
   if (process.env.NODE_ENV === "production") {
     res.status(404).json({ error: "Not found." });
     return;
   }
-  if (surgeAirStore.getEmailProviderMode() !== "aws") {
+  if (req.surgeAirStore.getEmailProviderMode() !== "aws") {
     res.status(409).json({ error: "Amazon SES provider is not selected." });
     return;
   }
@@ -149,7 +169,7 @@ router.post("/integrations/email/test", async (_req, res): Promise<void> => {
   }
 
   try {
-    const result = await surgeAirStore.sendEmailIntegrationTest();
+    const result = await req.surgeAirStore.sendEmailIntegrationTest();
     res.json(
       TestEmailIntegrationResponse.parse({
         ...result,
@@ -181,7 +201,7 @@ router.post("/integrations/sms/test", async (req, res): Promise<void> => {
     res.status(400).json({ error: "A message between 1 and 1600 characters is required." });
     return;
   }
-  if (surgeAirStore.getSmsProviderMode() !== "aws") {
+  if (req.surgeAirStore.getSmsProviderMode() !== "aws") {
     res.status(409).json({ error: "AWS SMS provider is not selected." });
     return;
   }
@@ -209,7 +229,7 @@ router.post("/integrations/sms/test", async (req, res): Promise<void> => {
   }
 
   try {
-    const result = await surgeAirStore.sendSmsSimulatorTest(input.data.message);
+    const result = await req.surgeAirStore.sendSmsSimulatorTest(input.data.message);
     res.json(
       TestSmsIntegrationResponse.parse({
         success: true,

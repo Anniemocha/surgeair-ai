@@ -442,6 +442,13 @@ Use the published Replit-hosted hackathon deployment to demonstrate the canonica
 
 Demo video: Coming soon
 
+### Resetting the Demo
+
+Judges can use **Reset Demo** in the operations header to restore SG4821 to
+the original delayed SA204 disruption and replay the demonstration. Reset is
+limited to the current browser session, preserves AWS integration readiness,
+and does not invoke external AWS services.
+
 ## License
 
 The project package metadata declares the MIT license. No standalone `LICENSE` file currently exists.

@@ -12,8 +12,15 @@ import {
   verifiedIntegrationProfile,
   verifiedReadinessEvidence,
 } from "../config/verified-readiness-evidence";
-import { InMemoryConversationRepository } from "../conversation/conversation-repository";
-import { InMemoryEventStore, type SurgeAirEventType } from "../events/event-store";
+import {
+  InMemoryConversationRepository,
+  type StoredConversation,
+} from "../conversation/conversation-repository";
+import {
+  InMemoryEventStore,
+  type SurgeAirEvent,
+  type SurgeAirEventType,
+} from "../events/event-store";
 import { createModelProvider } from "../models/model-provider-factory";
 import { LocalOperationalLogger } from "../observability/operational-logger";
 import { JsonReadinessStateStore } from "../observability/readiness-state-store";
@@ -76,6 +83,13 @@ export interface ConversationState {
   selectedFlight: string | null;
   confirmationStatus: string;
   rebookingStatus: string;
+}
+
+export interface DemoStateSnapshot {
+  booking: BookingRecord;
+  conversations: StoredConversation[];
+  activities: ActivityRecord[];
+  events: SurgeAirEvent[];
 }
 
 export interface ItinerarySender {
@@ -142,43 +156,47 @@ const flights = new Map<string, FlightRecord>([
   ],
 ]);
 
-const booking: BookingRecord = {
-  bookingReference: "SG4821",
-  passengerId: "PAX-1042",
-  passengerName: "Draymond Hillsend",
-  currentFlight: flights.get("SA204")!,
-  origin: "LIS",
-  destination: "EDI",
-  status: "Disrupted",
-};
+export function createCanonicalDemoState() {
+  const booking: BookingRecord = {
+    bookingReference: "SG4821",
+    passengerId: "PAX-1042",
+    passengerName: "Draymond Hillsend",
+    currentFlight: flights.get("SA204")!,
+    origin: "LIS",
+    destination: "EDI",
+    status: "Disrupted",
+  };
+  const conversation: ConversationState = {
+    passengerId: booking.passengerId,
+    passengerName: booking.passengerName,
+    bookingReference: booking.bookingReference,
+    currentFlight: "SA204",
+    origin: "LIS",
+    destination: "EDI",
+    currentChannel: "SMS",
+    previousChannel: null,
+    passengerRequest: null,
+    detectedIntent: null,
+    arrivalConstraint: null,
+    alternativeFlights: [],
+    selectedFlight: null,
+    confirmationStatus: "Not requested",
+    rebookingStatus: "Not started",
+  };
+  const messages: MessageRecord[] = [
+    {
+      id: "msg-1",
+      channel: "SMS",
+      sender: "SurgeAir AI",
+      text: "Flight SA204 from Lisbon to Edinburgh is delayed by 3 hours. I can help you find another option.",
+      timestamp: "10:03",
+    },
+  ];
+  return { booking, conversation, messages };
+}
 
-const conversation: ConversationState = {
-  passengerId: booking.passengerId,
-  passengerName: booking.passengerName,
-  bookingReference: booking.bookingReference,
-  currentFlight: "SA204",
-  origin: "LIS",
-  destination: "EDI",
-  currentChannel: "SMS",
-  previousChannel: null,
-  passengerRequest: null,
-  detectedIntent: null,
-  arrivalConstraint: null,
-  alternativeFlights: [],
-  selectedFlight: null,
-  confirmationStatus: "Not requested",
-  rebookingStatus: "Not started",
-};
-
-const messages: MessageRecord[] = [
-  {
-    id: "msg-1",
-    channel: "SMS",
-    sender: "SurgeAir AI",
-    text: "Flight SA204 from Lisbon to Edinburgh is delayed by 3 hours. I can help you find another option.",
-    timestamp: "10:03",
-  },
-];
+export function createSurgeAirStore() {
+const { booking, conversation, messages } = createCanonicalDemoState();
 
 const conversationId = "conv-sg4821-disruption";
 const awsReadinessConfig = getAwsReadinessConfig();
@@ -261,6 +279,73 @@ const activities: ActivityRecord[] = [
   },
 ];
 
+function canonicalActivities(): ActivityRecord[] {
+  return [
+    {
+      id: "activity-1",
+      label: "Flight disruption detected",
+      detail: "SA204 delayed by 3 hours",
+      status: "COMPLETED",
+      timestamp: "10:02",
+    },
+    {
+      id: "activity-2",
+      label: "Passenger notified",
+      detail: "SMS sent to Draymond Hillsend",
+      status: "COMPLETED",
+      timestamp: "10:03",
+    },
+  ];
+}
+
+function canonicalEvents(
+  sourceBooking: BookingRecord = booking,
+): SurgeAirEvent[] {
+  return [
+    {
+      eventId: "evt-1",
+      conversationId,
+      passengerId: sourceBooking.passengerId,
+      eventType: "FLIGHT_DISRUPTION_DETECTED",
+      channel: "sms",
+      timestamp: new Date().toISOString(),
+      metadata: { flightNumber: "SA204", delayMinutes: 180 },
+    },
+    {
+      eventId: "evt-2",
+      conversationId,
+      passengerId: booking.passengerId,
+      eventType: "PASSENGER_NOTIFIED",
+      channel: "sms",
+      timestamp: new Date().toISOString(),
+      metadata: { bookingReference: sourceBooking.bookingReference },
+    },
+  ];
+}
+
+function createCanonicalDemoSnapshot(): DemoStateSnapshot {
+  const canonical = createCanonicalDemoState();
+  return {
+    booking: {
+      ...canonical.booking,
+      currentFlight: { ...canonical.booking.currentFlight },
+    },
+    conversations: [
+      {
+        ...canonical.conversation,
+        conversationId,
+        messages: canonical.messages.map((message) => ({ ...message })),
+        createdAt: "2025-01-01T10:03:00.000Z",
+        updatedAt: "2025-01-01T10:03:00.000Z",
+        lastToolCalled: null,
+        currentAgentState: "Disruption detected",
+      },
+    ],
+    activities: canonicalActivities(),
+    events: canonicalEvents(canonical.booking),
+  };
+}
+
 eventStore.append({
   conversationId,
   passengerId: booking.passengerId,
@@ -336,7 +421,85 @@ function syncConversation(lastToolCalled: string | null, currentAgentState: stri
   });
 }
 
-export const surgeAirStore = {
+const store = {
+  captureState(): DemoStateSnapshot {
+    return {
+      booking: {
+        ...booking,
+        currentFlight: { ...booking.currentFlight },
+      },
+      conversations: conversationRepository.snapshot(),
+      activities: activities.map((activity) => ({ ...activity })),
+      events: eventStore.snapshot(),
+    };
+  },
+
+  restoreState(snapshot: DemoStateSnapshot) {
+    Object.assign(booking, {
+      ...snapshot.booking,
+      currentFlight: { ...snapshot.booking.currentFlight },
+    });
+    const stored = snapshot.conversations.find(
+      (item) => item.conversationId === conversationId,
+    );
+    if (stored) {
+      Object.assign(conversation, {
+        passengerId: stored.passengerId,
+        passengerName: stored.passengerName,
+        bookingReference: stored.bookingReference,
+        currentFlight: stored.currentFlight,
+        origin: stored.origin,
+        destination: stored.destination,
+        currentChannel: stored.currentChannel,
+        previousChannel: stored.previousChannel,
+        passengerRequest: stored.passengerRequest,
+        detectedIntent: stored.detectedIntent,
+        arrivalConstraint: stored.arrivalConstraint,
+        alternativeFlights: [...stored.alternativeFlights],
+        selectedFlight: stored.selectedFlight,
+        confirmationStatus: stored.confirmationStatus,
+        rebookingStatus: stored.rebookingStatus,
+      });
+    }
+    conversationRepository.restore(snapshot.conversations);
+    activities.splice(
+      0,
+      activities.length,
+      ...snapshot.activities.map((activity) => ({ ...activity })),
+    );
+    eventStore.restore(snapshot.events);
+  },
+
+  resetDemo() {
+    const canonical = createCanonicalDemoState();
+    Object.assign(booking, {
+      ...canonical.booking,
+      currentFlight: { ...canonical.booking.currentFlight },
+    });
+    Object.assign(conversation, canonical.conversation, {
+      alternativeFlights: [],
+    });
+    conversationRepository.restore([
+      {
+        ...canonical.conversation,
+        conversationId,
+        messages: canonical.messages.map((message) => ({ ...message })),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastToolCalled: null,
+        currentAgentState: "Disruption detected",
+      },
+    ]);
+    activities.splice(0, activities.length, ...canonicalActivities());
+    eventStore.restore(canonicalEvents());
+    return {
+      success: true as const,
+      booking: "SG4821" as const,
+      flight: "SA204" as const,
+      status: "Disrupted" as const,
+    };
+  },
+
   async recordPassengerMessage(channel: Channel, content: string) {
     return messageOrchestrator.receive({
       messageId: `inbound-${Date.now()}`,
@@ -700,3 +863,10 @@ export const surgeAirStore = {
     };
   },
 };
+
+return store;
+}
+
+export type SurgeAirStore = ReturnType<typeof createSurgeAirStore>;
+
+export const surgeAirStore = createSurgeAirStore();

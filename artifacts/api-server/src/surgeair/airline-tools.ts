@@ -11,22 +11,24 @@ import { ToolRegistry } from "../tools/tool-registry";
 import {
   surgeAirStore,
   type Channel,
+  type SurgeAirStore,
 } from "./domain";
 
+export function createAirlineTools(store: SurgeAirStore) {
 const registry = new ToolRegistry(new LocalOperationalLogger());
 
 registry.register({
   name: "getBooking",
   description: "Retrieve a passenger booking by booking reference.",
   inputSchema: GetBookingParams,
-  execute: ({ bookingReference }) => surgeAirStore.getBooking(bookingReference),
+  execute: ({ bookingReference }) => store.getBooking(bookingReference),
 });
 
 registry.register({
   name: "getFlightStatus",
   description: "Retrieve current flight status and disruption information.",
   inputSchema: GetFlightStatusParams,
-  execute: ({ flightNumber }) => surgeAirStore.getFlight(flightNumber),
+  execute: ({ flightNumber }) => store.getFlight(flightNumber),
 });
 
 registry.register({
@@ -35,11 +37,11 @@ registry.register({
     "Search available flights by route and optional arrival-before constraint.",
   inputSchema: SearchAlternativeFlightsQueryParams,
   execute: async ({ origin, destination, arrivalBefore }) => {
-    await surgeAirStore.recordPassengerMessage(
+    await store.recordPassengerMessage(
       "WhatsApp",
       `I need to arrive before ${arrivalBefore ?? "the requested time"}.`,
     );
-    return surgeAirStore.searchAlternatives(
+    return store.searchAlternatives(
       origin,
       destination,
       arrivalBefore,
@@ -53,11 +55,11 @@ registry.register({
     "Record a selected alternative without changing the booking and request explicit confirmation.",
   inputSchema: PrepareRebookingBody,
   execute: async ({ bookingReference, newFlight }) => {
-    await surgeAirStore.recordPassengerMessage(
+    await store.recordPassengerMessage(
       "RCS",
       `Take ${newFlight.toUpperCase()}.`,
     );
-    return surgeAirStore.prepareRebooking(bookingReference, newFlight);
+    return store.prepareRebooking(bookingReference, newFlight);
   },
 });
 
@@ -68,9 +70,9 @@ registry.register({
   inputSchema: RebookFlightBody,
   execute: async ({ bookingReference, newFlight, confirmation }) => {
     if (confirmation) {
-      await surgeAirStore.recordPassengerMessage("RCS", "Yes, confirm.");
+      await store.recordPassengerMessage("RCS", "Yes, confirm.");
     }
-    return surgeAirStore.rebook(
+    return store.rebook(
       bookingReference,
       newFlight,
       confirmation,
@@ -83,8 +85,11 @@ registry.register({
   description:
     "Send an updated itinerary only after explicit rebooking confirmation.",
   inputSchema: SendItineraryBody,
-  execute: ({ bookingReference, channel }) =>
-    surgeAirStore.sendItinerary(bookingReference, channel as Channel),
+    execute: ({ bookingReference, channel }) =>
+    store.sendItinerary(bookingReference, channel as Channel),
 });
 
-export const airlineTools = registry;
+return registry;
+}
+
+export const airlineTools = createAirlineTools(surgeAirStore);

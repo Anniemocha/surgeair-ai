@@ -60,6 +60,23 @@ export class InMemoryConversationRepository
     });
   }
 
+  snapshot() {
+    return [...this.conversations.values()].map((conversation) => ({
+      ...conversation,
+      messages: conversation.messages.map((message) => ({ ...message })),
+    }));
+  }
+
+  restore(conversations: StoredConversation[]) {
+    this.conversations.clear();
+    for (const conversation of conversations) {
+      this.conversations.set(conversation.conversationId, {
+        ...conversation,
+        messages: conversation.messages.map((message) => ({ ...message })),
+      });
+    }
+  }
+
   private require(conversationId: string) {
     const conversation = this.get(conversationId);
     if (!conversation) {

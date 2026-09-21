@@ -91,6 +91,18 @@ export const GetDashboardResponse = zod.object({
 
 
 /**
+ * Resets only the current browser session to SG4821 on delayed SA204. No request body or booking identifier is accepted.
+ * @summary Reset the current session's canonical SurgeAir demo state
+ */
+export const ResetDemoResponse = zod.object({
+  "success": zod.literal(true),
+  "booking": zod.enum(['SG4821']),
+  "flight": zod.enum(['SA204']),
+  "status": zod.enum(['Disrupted'])
+})
+
+
+/**
  * @summary Retrieve a passenger booking
  */
 export const GetBookingParams = zod.object({

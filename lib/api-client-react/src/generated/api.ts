@@ -22,6 +22,7 @@ import type {
 import type {
   Booking,
   Dashboard,
+  DemoResetResult,
   Flight,
   HealthStatus,
   ItineraryInput,
@@ -217,6 +218,81 @@ export function useGetDashboard<TData = Awaited<ReturnType<typeof getDashboard>>
 
 
 
+
+export const getResetDemoUrl = () => {
+
+
+
+
+  return `/api/demo/reset`
+}
+
+/**
+ * Resets only the current browser session to SG4821 on delayed SA204. No request body or booking identifier is accepted.
+ * @summary Reset the current session's canonical SurgeAir demo state
+ */
+export const resetDemo = async ( options?: Parameters<typeof customFetch>[1]): Promise<DemoResetResult> => {
+
+  return customFetch<DemoResetResult>(getResetDemoUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResetDemoMutationKey = () => ['resetDemo'] as const;
+
+export const getResetDemoMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetDemo>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetDemo>>, TError,void, TContext> => {
+
+const mutationKey = getResetDemoMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetDemo>>, void> = () => {
+
+
+          return  resetDemo(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetDemoMutationResult = NonNullable<Awaited<ReturnType<typeof resetDemo>>>
+
+    export type ResetDemoMutationError = ErrorType<void>
+
+
+    /**
+ * @summary Reset the current session's canonical SurgeAir demo state
+ */
+export const useResetDemo = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetDemo>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetDemo>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getResetDemoMutationOptions(options));
+    }
 
 export const getGetBookingUrl = (bookingReference: string,) => {
 

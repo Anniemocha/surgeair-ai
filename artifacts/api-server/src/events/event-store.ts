@@ -48,4 +48,22 @@ export class InMemoryEventStore implements EventStore {
       (event) => event.conversationId === conversationId,
     );
   }
+
+  snapshot() {
+    return this.events.map((event) => ({
+      ...event,
+      metadata: { ...event.metadata },
+    }));
+  }
+
+  restore(events: SurgeAirEvent[]) {
+    this.events.splice(
+      0,
+      this.events.length,
+      ...events.map((event) => ({
+        ...event,
+        metadata: { ...event.metadata },
+      })),
+    );
+  }
 }

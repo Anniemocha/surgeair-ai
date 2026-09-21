@@ -74,9 +74,10 @@ function readinessStyle(status: string) {
 
 interface DashboardPanelProps {
   dashboard: Dashboard;
+  headerAction?: React.ReactNode;
 }
 
-export function DashboardPanel({ dashboard }: DashboardPanelProps) {
+export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps) {
   const { activities, confirmationStatus, actionStatus, orchestration, integrationStatus } = dashboard;
   
   const { data: liveBooking } = useGetBooking(dashboard.booking.bookingReference);
@@ -94,6 +95,7 @@ export function DashboardPanel({ dashboard }: DashboardPanelProps) {
           <span>SURGE<span className="text-secondary">AIR</span> OPS</span>
         </div>
         <div className="flex items-center gap-3">
+          {headerAction}
           <Badge variant={actionStatus === 'COMPLETED' ? 'default' : 'secondary'} className="uppercase text-xs tracking-wider">
             {actionStatus}
           </Badge>

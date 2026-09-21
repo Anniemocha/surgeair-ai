@@ -47,3 +47,12 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Local verification artifacts and uploaded instruction files
+/screenshots/
+attached_assets/Pasted-*.txt
+
+# Local environment files; keep the placeholder template tracked
+.env
+.env.*
+!.env.example

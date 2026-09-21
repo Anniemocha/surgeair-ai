@@ -6,6 +6,7 @@ export type OperationalLogType =
   | "tool_call"
   | "agent_decision"
   | "channel_transition"
+  | "model_request"
   | "rebooking_attempt"
   | "rebooking_success"
   | "rebooking_failure"

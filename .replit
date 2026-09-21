@@ -24,3 +24,6 @@ timeoutMs = 20000
 [userenv.shared]
 AWS_REGION = "eu-north-1"
 BEDROCK_MODEL_ID = "eu.amazon.nova-2-lite-v1:0"
+
+[nix]
+channel = "stable-25_05"

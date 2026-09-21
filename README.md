@@ -127,6 +127,34 @@ Their separation of channel ingress, orchestration, state, model execution, tool
 
 Configuration placeholders are documented in `.env.example`. They contain no credentials and all AWS feature flags default to disabled.
 
+## Amazon Bedrock Integration
+
+SurgeAir supports two interchangeable language-understanding providers behind the same `ModelProvider` interface:
+
+- `LocalModelProvider` is the default deterministic development provider and remains the safe fallback.
+- `BedrockModelProvider` uses the Amazon Bedrock Converse API with Amazon Nova 2 Lite to extract passenger intent, destination, arrival constraints, selected flight, recommended tool, and confirmation requirements.
+
+Provider selection is controlled by `MODEL_PROVIDER`:
+
+```text
+MODEL_PROVIDER=local
+```
+
+Set it to `bedrock` only after the connectivity test succeeds. The server-side Bedrock configuration uses:
+
+- `AWS_BEARER_TOKEN_BEDROCK` — secret bearer token; never exposed to the frontend or committed
+- `AWS_REGION` — Bedrock region, currently `eu-north-1`
+- `BEDROCK_MODEL_ID` — inference profile, currently `eu.amazon.nova-2-lite-v1:0`
+- `MODEL_PROVIDER` — `local` or `bedrock`; defaults to `local`
+
+Run the safe connectivity check with:
+
+```bash
+pnpm --filter @workspace/api-server run test:bedrock
+```
+
+Nova 2 Lite performs language understanding and decision extraction only. The SurgeAir backend remains authoritative for tool execution and booking mutations. Selecting a flight creates a pending confirmation state; the backend independently requires a matching pending selection and a later explicit confirmation before `rebookFlight` can change a booking.
+
 ## Safety boundaries
 
 - Rebooking requires explicit passenger confirmation.

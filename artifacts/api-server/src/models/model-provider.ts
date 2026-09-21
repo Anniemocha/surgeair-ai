@@ -1,11 +1,38 @@
+export type SurgeAirToolName =
+  | "getBooking"
+  | "getFlightStatus"
+  | "searchAlternativeFlights"
+  | "rebookFlight"
+  | "sendItinerary";
+
+export interface PassengerContext {
+  passengerName?: string;
+  bookingReference?: string;
+  currentFlight?: string;
+  origin?: string;
+  destination?: string;
+  disruptionStatus?: string;
+  selectedFlight?: string | null;
+  confirmationStatus?: string;
+}
+
 export interface PassengerInterpretation {
   intent: string;
+  destination: string | null;
   constraints: { arrivalBefore: string | null };
+  selectedFlight: string | null;
+  requiresTool: SurgeAirToolName | null;
   requiresConfirmation: boolean;
+  nextAction: string;
+  provider: "local" | "amazon-bedrock";
 }
 
 export interface ModelProvider {
-  interpretPassengerRequest(content: string): PassengerInterpretation;
+  readonly provider: "local" | "amazon-bedrock";
+  interpretPassengerRequest(
+    content: string,
+    context?: PassengerContext,
+  ): Promise<PassengerInterpretation>;
   generateResponse(context: {
     intent: string;
     selectedFlight?: string | null;
@@ -14,7 +41,11 @@ export interface ModelProvider {
 }
 
 export class LocalModelProvider implements ModelProvider {
-  interpretPassengerRequest(content: string) {
+  readonly provider = "local" as const;
+
+  async interpretPassengerRequest(
+    content: string,
+  ): Promise<PassengerInterpretation> {
     const normalized = content.toLowerCase();
     const timeMatch = normalized.match(
       /(?:before|by)\s+([0-2]?\d)(?::([0-5]\d))?\s*(am|pm)?/,
@@ -30,14 +61,38 @@ export class LocalModelProvider implements ModelProvider {
       arrivalBefore = `${String(hour).padStart(2, "0")}:${minutes}`;
     }
 
+    const selectedFlight =
+      content.toUpperCase().match(/\bSA\d{3}\b/)?.[0] ?? null;
+    const intent = normalized.includes("confirm")
+      ? "confirm_rebooking"
+      : selectedFlight
+        ? "select_alternative"
+        : "find_alternative_flight";
+
+    const requiresTool: SurgeAirToolName | null =
+      intent === "find_alternative_flight"
+        ? "searchAlternativeFlights"
+        : intent === "confirm_rebooking"
+          ? "rebookFlight"
+          : null;
+
     return {
-      intent: normalized.includes("confirm")
-        ? "confirm_rebooking"
-        : normalized.match(/sa\d{3}/)
-          ? "select_alternative"
-          : "find_alternative",
+      intent,
+      destination:
+        normalized.includes("edinburgh") || /\bedi\b/i.test(content)
+          ? "EDI"
+          : null,
       constraints: { arrivalBefore },
-      requiresConfirmation: !normalized.includes("confirm"),
+      selectedFlight,
+      requiresTool,
+      requiresConfirmation: intent === "select_alternative",
+      nextAction:
+        intent === "select_alternative"
+          ? "Ask the passenger for explicit confirmation."
+          : intent === "confirm_rebooking"
+            ? "Verify a pending rebooking before invoking the rebooking tool."
+            : "Search for flights matching the passenger constraint.",
+      provider: this.provider,
     };
   }
 
@@ -51,8 +106,4 @@ export class LocalModelProvider implements ModelProvider {
     }
     return "I can help find an alternative that matches your arrival time.";
   }
-}
-
-export interface BedrockModelProvider extends ModelProvider {
-  readonly provider: "amazon-bedrock";
 }

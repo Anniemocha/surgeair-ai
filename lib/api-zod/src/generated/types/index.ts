@@ -16,6 +16,8 @@ export * from './integrationReadiness';
 export * from './itineraryInput';
 export * from './itineraryResult';
 export * from './orchestrationState';
+export * from './pendingRebookingResult';
+export * from './prepareRebookingInput';
 export * from './rebookInput';
 export * from './rebookResult';
 export * from './searchAlternativeFlightsParams';

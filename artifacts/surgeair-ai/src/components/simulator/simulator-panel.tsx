@@ -6,6 +6,7 @@ import {
 } from "@workspace/api-client-react";
 import { 
   useSearchAlternativeFlights,
+  usePrepareRebooking,
   useRebookFlight, 
   useSendItinerary,
   getGetDashboardQueryKey,
@@ -67,6 +68,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   );
 
   const rebookFlight = useRebookFlight();
+  const prepareRebooking = usePrepareRebooking();
   const sendItinerary = useSendItinerary();
 
   // Scroll to bottom on new message
@@ -132,14 +134,25 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
       }, 1500);
 
     } else if (showingOptions) {
-      setTimeout(() => {
+      setTimeout(async () => {
         // Try to match flight number from user input
         const selected = alternativeFlights.find(f => userText.toUpperCase().includes(f.flightNumber)) 
                        || alternativeFlights[0]; // fallback to first if not explicitly named
-        
-        setAwaitingConfirmationFor(selected);
-        addMessage(`You've selected ${selected.flightNumber}. Shall I go ahead and confirm this rebooking for you? Reply YES or CONFIRM.`, 'ai');
-        setShowingOptions(false);
+
+        try {
+          await prepareRebooking.mutateAsync({
+            data: {
+              bookingReference: dashboard.booking.bookingReference,
+              newFlight: selected.flightNumber
+            }
+          });
+          setAwaitingConfirmationFor(selected);
+          addMessage(`You've selected ${selected.flightNumber}. Shall I go ahead and confirm this rebooking for you? Reply YES or CONFIRM.`, 'ai');
+          setShowingOptions(false);
+          queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        } catch (e) {
+          addMessage("Sorry, I couldn't prepare that flight for confirmation. Please choose another option.", 'ai');
+        }
         setIsTyping(false);
       }, 1000);
 

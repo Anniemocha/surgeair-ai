@@ -7,7 +7,7 @@ import {
 import { integrationReadiness } from "../config/aws";
 import { InMemoryConversationRepository } from "../conversation/conversation-repository";
 import { InMemoryEventStore, type SurgeAirEventType } from "../events/event-store";
-import { LocalModelProvider } from "../models/model-provider";
+import { createModelProvider } from "../models/model-provider-factory";
 import { LocalOperationalLogger } from "../observability/operational-logger";
 import { MessageOrchestrator } from "../orchestration/message-orchestrator";
 
@@ -191,7 +191,7 @@ const messageOrchestrator = new MessageOrchestrator(
     new EmailChannel(operationalLogger),
   ],
   conversationRepository,
-  new LocalModelProvider(),
+  createModelProvider(operationalLogger),
   eventStore,
   operationalLogger,
 );
@@ -364,17 +364,40 @@ export const surgeAirStore = {
     return matches;
   },
 
+  prepareRebooking(reference: string, newFlightNumber: string) {
+    const target = flights.get(newFlightNumber.toUpperCase());
+    if (reference.toUpperCase() !== booking.bookingReference || !target) {
+      return { error: "Booking or flight not found." } as const;
+    }
+
+    conversation.previousChannel = conversation.currentChannel;
+    conversation.currentChannel = "RCS";
+    conversation.selectedFlight = target.flightNumber;
+    conversation.confirmationStatus = "Awaiting passenger confirmation";
+    appendEvent("ALTERNATIVE_SELECTED", "RCS", {
+      flightNumber: target.flightNumber,
+    });
+    appendEvent("CONFIRMATION_REQUESTED", "RCS", {
+      bookingReference: reference,
+    });
+    addActivityOnce("Alternative selected", target.flightNumber);
+    addActivityOnce(
+      "Confirmation requested",
+      `Rebook ${reference} to ${target.flightNumber}`,
+    );
+    syncConversation("rebookFlight", "Awaiting confirmation");
+
+    return {
+      selectedFlight: target.flightNumber,
+      confirmationStatus: conversation.confirmationStatus,
+      message: `Explicit confirmation is required before rebooking to ${target.flightNumber}.`,
+    } as const;
+  },
+
   rebook(reference: string, newFlightNumber: string, confirmed: boolean) {
     if (!confirmed) {
-      conversation.selectedFlight = newFlightNumber.toUpperCase();
-      conversation.confirmationStatus = "Awaiting passenger confirmation";
-      appendEvent("ALTERNATIVE_SELECTED", "RCS", {
-        flightNumber: conversation.selectedFlight,
-      });
-      appendEvent("CONFIRMATION_REQUESTED", "RCS", {
-        bookingReference: reference,
-      });
-      syncConversation("rebookFlight", "Awaiting confirmation");
+      const pending = this.prepareRebooking(reference, newFlightNumber);
+      if ("error" in pending) return pending;
       return { error: "Explicit passenger confirmation is required." } as const;
     }
 
@@ -391,6 +414,22 @@ export const surgeAirStore = {
       });
       return { error: "Booking or flight not found." } as const;
     }
+    const stored = conversationRepository.get(conversationId);
+    if (
+      !stored ||
+      stored.confirmationStatus !== "Awaiting passenger confirmation" ||
+      stored.selectedFlight !== target.flightNumber
+    ) {
+      operationalLogger.record("rebooking_failure", {
+        bookingReference: reference,
+        newFlight: newFlightNumber,
+        reason: "missing_matching_pending_rebooking",
+      });
+      return {
+        error:
+          "A matching pending rebooking selection is required before confirmation.",
+      } as const;
+    }
 
     const previousFlight = booking.currentFlight.flightNumber;
     booking.currentFlight = target;
@@ -401,11 +440,6 @@ export const surgeAirStore = {
     conversation.confirmationStatus = "Confirmed";
     conversation.rebookingStatus = "Rebooked";
     conversation.currentFlight = target.flightNumber;
-    addActivityOnce("Alternative selected", target.flightNumber);
-    addActivityOnce(
-      "Confirmation requested",
-      `Rebook ${reference} to ${target.flightNumber}`,
-    );
     appendEvent("ALTERNATIVE_SELECTED", "RCS", {
       flightNumber: target.flightNumber,
     });

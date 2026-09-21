@@ -30,8 +30,18 @@ export class MessageOrchestrator {
       throw new Error(`Conversation ${message.conversationId} not found.`);
     }
 
-    const interpretation = this.model.interpretPassengerRequest(
+    const interpretation = await this.model.interpretPassengerRequest(
       normalized.content,
+      {
+        passengerName: conversation.passengerName,
+        bookingReference: conversation.bookingReference,
+        currentFlight: conversation.currentFlight,
+        origin: conversation.origin,
+        destination: conversation.destination,
+        disruptionStatus: conversation.rebookingStatus,
+        selectedFlight: conversation.selectedFlight,
+        confirmationStatus: conversation.confirmationStatus,
+      },
     );
     const channel = adapter.channel;
     this.conversations.transitionChannel(message.conversationId, channel);
@@ -53,6 +63,12 @@ export class MessageOrchestrator {
       arrivalConstraint:
         interpretation.constraints.arrivalBefore ??
         transitioned.arrivalConstraint,
+      selectedFlight:
+        interpretation.selectedFlight ?? transitioned.selectedFlight,
+      confirmationStatus:
+        interpretation.selectedFlight && interpretation.requiresConfirmation
+          ? "Awaiting passenger confirmation"
+          : transitioned.confirmationStatus,
       currentAgentState: "Passenger request interpreted",
     });
     this.events.append({
@@ -63,11 +79,17 @@ export class MessageOrchestrator {
       metadata: {
         intent: interpretation.intent,
         arrivalBefore: interpretation.constraints.arrivalBefore,
+        selectedFlight: interpretation.selectedFlight,
+        requiresTool: interpretation.requiresTool,
+        requiresConfirmation: interpretation.requiresConfirmation,
       },
     });
     this.logger.record("agent_decision", {
       conversationId: message.conversationId,
       intent: interpretation.intent,
+      provider: interpretation.provider,
+      tool: interpretation.requiresTool,
+      confirmationRequired: interpretation.requiresConfirmation,
     });
     return interpretation;
   }

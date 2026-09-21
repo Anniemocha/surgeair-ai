@@ -85,6 +85,17 @@ export interface RebookInput {
   confirmation: boolean;
 }
 
+export interface PrepareRebookingInput {
+  bookingReference: string;
+  newFlight: string;
+}
+
+export interface PendingRebookingResult {
+  selectedFlight: string;
+  confirmationStatus: string;
+  message: string;
+}
+
 export interface RebookResult {
   booking: Booking;
   actionStatus: string;

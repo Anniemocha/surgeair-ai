@@ -1,6 +1,7 @@
 import {
   GetBookingParams,
   GetFlightStatusParams,
+  PrepareRebookingBody,
   RebookFlightBody,
   SearchAlternativeFlightsQueryParams,
   SendItineraryBody,
@@ -45,6 +46,20 @@ registry.register({
       destination,
       arrivalBefore,
     );
+  },
+});
+
+registry.register({
+  name: "prepareRebooking",
+  description:
+    "Record a selected alternative without changing the booking and request explicit confirmation.",
+  inputSchema: PrepareRebookingBody,
+  execute: async ({ bookingReference, newFlight }) => {
+    await surgeAirStore.recordPassengerMessage(
+      "RCS",
+      `Take ${newFlight.toUpperCase()}.`,
+    );
+    return surgeAirStore.prepareRebooking(bookingReference, newFlight);
   },
 });
 

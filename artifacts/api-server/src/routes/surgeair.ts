@@ -5,6 +5,8 @@ import {
   GetDashboardResponse,
   GetFlightStatusParams,
   GetFlightStatusResponse,
+  PrepareRebookingBody,
+  PrepareRebookingResponse,
   RebookFlightBody,
   RebookFlightResponse,
   SearchAlternativeFlightsQueryParams,
@@ -77,6 +79,18 @@ router.post("/bookings/rebook", async (req, res) => {
   }
 
   res.json(RebookFlightResponse.parse(result));
+});
+
+router.post("/bookings/rebook/prepare", async (req, res) => {
+  const input = PrepareRebookingBody.parse(req.body);
+  const result = await airlineTools.execute<
+    ReturnType<typeof surgeAirStore.prepareRebooking>
+  >("prepareRebooking", input);
+  if ("error" in result) {
+    res.status(404).json({ error: result.error });
+    return;
+  }
+  res.json(PrepareRebookingResponse.parse(result));
 });
 
 router.post("/itinerary/send", async (req, res) => {

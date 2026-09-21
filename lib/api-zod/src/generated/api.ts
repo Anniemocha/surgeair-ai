@@ -192,6 +192,21 @@ export const RebookFlightResponse = zod.object({
 
 
 /**
+ * @summary Record a selected alternative and request explicit confirmation
+ */
+export const PrepareRebookingBody = zod.object({
+  "bookingReference": zod.string(),
+  "newFlight": zod.string()
+})
+
+export const PrepareRebookingResponse = zod.object({
+  "selectedFlight": zod.string(),
+  "confirmationStatus": zod.string(),
+  "message": zod.string()
+})
+
+
+/**
  * @summary Simulate sending an updated itinerary
  */
 export const SendItineraryBody = zod.object({

@@ -131,6 +131,26 @@ paths:
           description: Rebooking requires explicit confirmation
         "404":
           description: Booking or flight not found
+  /bookings/rebook/prepare:
+    post:
+      operationId: prepareRebooking
+      tags: [surgeair]
+      summary: Record a selected alternative and request explicit confirmation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareRebookingInput"
+      responses:
+        "200":
+          description: Pending rebooking confirmation state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingRebookingResult"
+        "404":
+          description: Booking or flight not found
   /itinerary/send:
     post:
       operationId: sendItinerary
@@ -245,6 +265,19 @@ components:
         bookingReference: { type: string }
         newFlight: { type: string }
         confirmation: { type: boolean }
+    PrepareRebookingInput:
+      type: object
+      required: [bookingReference, newFlight]
+      properties:
+        bookingReference: { type: string }
+        newFlight: { type: string }
+    PendingRebookingResult:
+      type: object
+      required: [selectedFlight, confirmationStatus, message]
+      properties:
+        selectedFlight: { type: string }
+        confirmationStatus: { type: string }
+        message: { type: string }
     RebookResult:
       type: object
       required: [booking, actionStatus, message]

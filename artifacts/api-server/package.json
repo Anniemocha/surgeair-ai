@@ -7,9 +7,13 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
+    "test": "pnpm run test:safety",
+    "test:bedrock": "esbuild src/scripts/bedrock-connectivity.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/bedrock-connectivity.mjs && node --enable-source-maps dist/bedrock-connectivity.mjs",
+    "test:safety": "MODEL_PROVIDER=local esbuild src/scripts/rebooking-safety.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/rebooking-safety.mjs && node --enable-source-maps dist/rebooking-safety.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1136.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "cookie-parser": "^1.4.7",

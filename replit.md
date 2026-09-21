@@ -1,15 +1,16 @@
-# [Project name]
+# SurgeAir AI
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+An omnichannel airline passenger assistant that finds disruption alternatives and performs simulated rebooking only after explicit confirmation.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/surgeair-ai run dev` — run the React dashboard through its managed workflow
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- No AWS credentials are required for the Milestone 1 demo
 
 ## Stack
 
@@ -22,23 +23,35 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/surgeair-ai` — operations dashboard and passenger messaging simulator
+- `artifacts/api-server/src/surgeair` — simulated state and replaceable delivery services
+- `artifacts/api-server/src/routes/surgeair.ts` — API route handlers
+- `lib/api-spec/openapi.yaml` — source of truth for the API contract
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Milestone 1 uses realistic simulated records and communication delivery.
+- Rebooking is deterministic and requires a true explicit-confirmation flag.
+- Conversation state is isolated behind an in-memory store so DynamoDB can replace it later.
+- Itinerary delivery uses an interface so Amazon SES can replace the simulator.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Track the SA204 disruption and passenger booking SG4821.
+- Continue one passenger conversation across SMS, WhatsApp, RCS, and email.
+- Search alternatives satisfying an arrival-before constraint.
+- Select, confirm, and execute a simulated rebooking to SA218.
+- Simulate updated itinerary delivery and show agent activity.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Demo passenger is Draymond Hillsend.
+- The app must feel like a polished hackathon prototype, not a generic chatbot.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Regenerate API hooks and Zod schemas after every OpenAPI change.
+- Never display an alternative as the confirmed current flight before the rebooking API succeeds.
 
 ## Pointers
 

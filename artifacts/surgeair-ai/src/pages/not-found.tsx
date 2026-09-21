@@ -1,22 +1,35 @@
-import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle } from 'lucide-react';
+import { useLocation } from "wouter";
+import { Plane, AlertTriangle, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 export default function NotFound() {
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md mx-4">
-        <CardContent className="pt-6">
-          <div className="flex mb-4 gap-2">
-            <AlertCircle className="h-8 w-8 text-red-500" />
-            <h1 className="text-2xl font-bold text-gray-900">
-              404 Page Not Found
-            </h1>
-          </div>
+  const [_, setLocation] = useLocation();
 
-          <p className="mt-4 text-sm text-gray-600">
-            Did you forget to add the page to the router?
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-md p-8 text-center space-y-6 shadow-xl border-t-4 border-t-primary">
+        <div className="flex justify-center">
+          <div className="relative">
+            <Plane className="w-20 h-20 text-muted-foreground opacity-20" />
+            <AlertTriangle className="w-8 h-8 text-destructive absolute bottom-0 right-0" />
+          </div>
+        </div>
+        
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Flight Not Found</h1>
+          <p className="text-muted-foreground text-sm">
+            The page or resource you're looking for doesn't exist or has been moved.
           </p>
-        </CardContent>
+        </div>
+
+        <Button 
+          onClick={() => setLocation("/")}
+          className="w-full h-12 text-md"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Return to Dashboard
+        </Button>
       </Card>
     </div>
   );

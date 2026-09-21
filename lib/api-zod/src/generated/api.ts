@@ -74,7 +74,13 @@ export const GetDashboardResponse = zod.object({
   "previousChannel": zod.string().nullable(),
   "currentIntent": zod.string().nullable(),
   "currentAgentState": zod.string(),
-  "lastToolCalled": zod.string().nullable()
+  "lastToolCalled": zod.string().nullable(),
+  "modelProvider": zod.string(),
+  "model": zod.string(),
+  "region": zod.string().nullable(),
+  "modelStatus": zod.string(),
+  "modelLatencyMs": zod.number().int().nullable(),
+  "modelFallbackReason": zod.string().nullable()
 }),
   "integrationStatus": zod.array(zod.object({
   "service": zod.string(),

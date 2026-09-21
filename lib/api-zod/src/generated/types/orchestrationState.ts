@@ -16,4 +16,13 @@ export interface OrchestrationState {
   currentAgentState: string;
   /** @nullable */
   lastToolCalled: string | null;
+  modelProvider: string;
+  model: string;
+  /** @nullable */
+  region: string | null;
+  modelStatus: string;
+  /** @nullable */
+  modelLatencyMs: number | null;
+  /** @nullable */
+  modelFallbackReason: string | null;
 }

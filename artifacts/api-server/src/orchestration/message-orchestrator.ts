@@ -90,7 +90,6 @@ export class MessageOrchestrator {
       provider: interpretation.provider,
       tool: interpretation.requiresTool,
       confirmationRequired: interpretation.requiresConfirmation,
-      fallbackReason: interpretation.fallbackReason,
     });
     return interpretation;
   }

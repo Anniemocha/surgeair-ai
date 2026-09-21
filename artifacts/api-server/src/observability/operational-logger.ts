@@ -49,6 +49,8 @@ export class LocalOperationalLogger implements OperationalLogger {
   private bedrockVerificationStatus: BedrockVerificationStatus =
     "NOT VERIFIED";
 
+  private pendingBedrockFallback = false;
+
   record(
     type: OperationalLogType,
     details: Record<string, string | number | boolean | null>,
@@ -84,6 +86,7 @@ export class LocalOperationalLogger implements OperationalLogger {
           fallbackReason: null,
         };
         this.bedrockVerificationStatus = "CONNECTED";
+        this.pendingBedrockFallback = false;
       } else if (status === "fallback") {
         this.latestModelExecution = {
           provider: "local",
@@ -94,21 +97,23 @@ export class LocalOperationalLogger implements OperationalLogger {
           fallbackReason: "Bedrock unavailable",
         };
         this.bedrockVerificationStatus = "ERROR";
+        this.pendingBedrockFallback = true;
       }
       return;
     }
 
     if (type === "agent_decision" && details.provider === "local") {
-      const fallbackReason = stringValue(details.fallbackReason);
+      if (this.pendingBedrockFallback) {
+        this.pendingBedrockFallback = false;
+        return;
+      }
       this.latestModelExecution = {
         provider: "local",
         model: "Local Model",
         region: null,
-        status: fallbackReason ? "fallback" : "local",
-        latencyMs: fallbackReason
-          ? this.latestModelExecution.latencyMs
-          : null,
-        fallbackReason,
+        status: "local",
+        latencyMs: null,
+        fallbackReason: null,
       };
     }
   }

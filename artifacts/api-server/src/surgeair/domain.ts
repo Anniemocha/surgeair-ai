@@ -504,6 +504,7 @@ export const surgeAirStore = {
     if (!stored) {
       throw new Error("Demo conversation is unavailable.");
     }
+    const modelExecution = operationalLogger.getLatestModelExecution();
     return {
       booking,
       disruption: flights.get("SA204")!,
@@ -519,14 +520,12 @@ export const surgeAirStore = {
         currentIntent: stored.detectedIntent,
         currentAgentState: stored.currentAgentState,
         lastToolCalled: stored.lastToolCalled,
-        modelProvider: operationalLogger.getLatestModelExecution().provider,
-        model: operationalLogger.getLatestModelExecution().model,
-        region: operationalLogger.getLatestModelExecution().region,
-        modelStatus: operationalLogger.getLatestModelExecution().status,
-        modelLatencyMs:
-          operationalLogger.getLatestModelExecution().latencyMs,
-        modelFallbackReason:
-          operationalLogger.getLatestModelExecution().fallbackReason,
+        modelProvider: modelExecution.provider,
+        model: modelExecution.model,
+        region: modelExecution.region,
+        modelStatus: modelExecution.status,
+        modelLatencyMs: modelExecution.latencyMs,
+        modelFallbackReason: modelExecution.fallbackReason,
       },
       integrationStatus: integrationReadiness.map((integration) =>
         integration.service === "Amazon Bedrock"

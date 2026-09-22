@@ -14,6 +14,28 @@ import {
   type SurgeAirStore,
 } from "./domain";
 
+export class UnsupportedItineraryChannelError extends Error {
+  constructor(channel: string) {
+    super(`Unsupported itinerary channel: ${channel}`);
+    this.name = "UnsupportedItineraryChannelError";
+  }
+}
+
+export function normalizeItineraryChannel(channel: string): Channel {
+  switch (channel.trim().toLowerCase()) {
+    case "sms":
+      return "SMS";
+    case "whatsapp":
+      return "WhatsApp";
+    case "rcs":
+      return "RCS";
+    case "email":
+      return "Email";
+    default:
+      throw new UnsupportedItineraryChannelError(channel);
+  }
+}
+
 export function createAirlineTools(store: SurgeAirStore) {
 const registry = new ToolRegistry(new LocalOperationalLogger());
 
@@ -84,9 +106,17 @@ registry.register({
   name: "sendItinerary",
   description:
     "Send an updated itinerary only after explicit rebooking confirmation.",
-  inputSchema: SendItineraryBody,
+  inputSchema: {
+    parse(value: unknown) {
+      const input = SendItineraryBody.parse(value);
+      return {
+        ...input,
+        channel: normalizeItineraryChannel(input.channel),
+      };
+    },
+  },
     execute: ({ bookingReference, channel }) =>
-    store.sendItinerary(bookingReference, channel as Channel),
+    store.sendItinerary(bookingReference, channel),
 });
 
 return registry;

@@ -23,7 +23,10 @@ import {
   type FlightRecord,
   type SurgeAirStore,
 } from "../surgeair/domain";
-import { createAirlineTools } from "../surgeair/airline-tools";
+import {
+  createAirlineTools,
+  UnsupportedItineraryChannelError,
+} from "../surgeair/airline-tools";
 import { AwsSmsSendError } from "../channels/aws-sms-provider";
 import {
   AwsSesSendError,
@@ -133,14 +136,26 @@ router.post("/bookings/rebook/prepare", async (req, res) => {
 
 router.post("/itinerary/send", async (req, res) => {
   const input = SendItineraryBody.parse(req.body);
-  const result = await createAirlineTools(req.surgeAirStore).execute<
-    {
-      sent: boolean;
-      channel: string;
-      message: string;
-      sentAt: string;
-    } | { error: string } | null
-  >("sendItinerary", input);
+  let result:
+    | {
+        sent: boolean;
+        channel: string;
+        message: string;
+        sentAt: string;
+      }
+    | { error: string }
+    | null;
+  try {
+    result = await createAirlineTools(req.surgeAirStore).execute<
+      typeof result
+    >("sendItinerary", input);
+  } catch (error) {
+    if (error instanceof UnsupportedItineraryChannelError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
   if (!result) {
     res.status(404).json({ error: "Booking not found." });
     return;

@@ -28,6 +28,7 @@ MODEL_PROVIDER = "bedrock"
 SMS_PROVIDER = "aws"
 SMS_TEST_MIN_INTERVAL_MS = "30000"
 EMAIL_PROVIDER = "aws"
+AWS_SES_ENABLED = "true"
 
 [nix]
 channel = "stable-25_05"

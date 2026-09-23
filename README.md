@@ -522,7 +522,7 @@ Potential next steps include:
 - expanded disruption workflows
 - production deployment architecture
 
-## Project Value
+## Hackathon Value
 
 SurgeAir combines conversational AI, communications infrastructure, persistent context, tool execution, and explicit-action safety into a practical passenger recovery experience.
 

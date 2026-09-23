@@ -42,6 +42,7 @@ SurgeAir AI provides a context-aware passenger assistant that:
 - performs controlled rebooking
 - sends updated itinerary information
 - supports an omnichannel passenger experience
+- efficient real-time travel information, persistent context, and guided recovery actions in one experience.
 
 The agent interprets the request, but the backend remains authoritative for tool execution and booking mutation.
 

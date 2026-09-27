@@ -42,6 +42,7 @@ SurgeAir AI provides a context-aware passenger assistant that:
 - performs controlled rebooking
 - sends updated itinerary information
 - supports an omnichannel passenger experience
+- efficient real-time travel information, persistent context, and guided recovery actions in one experience.
 
 The agent interprets the request, but the backend remains authoritative for tool execution and booking mutation.
 
@@ -531,7 +532,7 @@ The value is not only chatbot responses. The agent maintains state across a pass
 
 **Live Demo:** [https://surge-air-ai-mvp.replit.app](https://surge-air-ai-mvp.replit.app)
 
-Use the published Replit-hosted hackathon deployment to demonstrate the canonical flow:
+Use the published Replit-hosted deployment to demonstrate the canonical flow:
 
 1. Show the SA204 disruption and initial SMS notification.
 2. Enter the arrival-before-18:00 constraint.

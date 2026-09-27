@@ -1,5 +1,7 @@
-import { surgeAirStore } from "../surgeair/domain";
+import assert from "node:assert/strict";
+import { createSurgeAirStore } from "../surgeair/domain";
 
+const surgeAirStore = createSurgeAirStore();
 const reference = "SG4821";
 const selectedFlight = "SA218";
 const initialFlight =
@@ -51,6 +53,29 @@ const finalFlight =
 if (!("booking" in confirmed) || finalFlight !== selectedFlight) {
   throw new Error("Explicit confirmation did not complete the pending rebooking.");
 }
+
+const completedReply = "Your booking has already been updated to SA218.";
+for (const channel of ["RCS", "SMS", "WhatsApp"] as const) {
+  surgeAirStore.selectConversationChannel(channel);
+  const beforeDuplicate = surgeAirStore.captureState();
+  for (const text of ["Yes, confirm.", "Book SA226 instead.", "The first option works for me."]) {
+    const response = await surgeAirStore.interpretMessage(text, reference, ["SA218", "SA226"]);
+    assert.equal(response?.clarification, completedReply);
+    assert.equal(response?.selectedFlight, null);
+  }
+  assert.deepEqual(surgeAirStore.prepareRebooking(reference, "SA226"), { error: completedReply });
+  assert.deepEqual(surgeAirStore.rebook(reference, "SA226", true), { error: completedReply });
+  assert.deepEqual(surgeAirStore.rebook(reference, "SA226", false), { error: completedReply });
+  assert.deepEqual(surgeAirStore.captureState(), beforeDuplicate);
+  assert.equal(surgeAirStore.getDashboard().orchestration.currentChannel, channel);
+  assert.equal(surgeAirStore.getDashboard().booking.currentFlight.flightNumber, "SA218");
+  assert.equal(surgeAirStore.getDashboard().confirmationStatus, "Confirmed");
+}
+
+surgeAirStore.resetDemo();
+assert.equal(surgeAirStore.getDashboard().booking.currentFlight.flightNumber, "SA204");
+assert.equal(surgeAirStore.getDashboard().actionStatus, "Not started");
+assert.equal("selectedFlight" in surgeAirStore.prepareRebooking(reference, selectedFlight), true);
 
 process.stdout.write(
   `${JSON.stringify(

@@ -141,6 +141,24 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
     addMessage(userText, 'passenger');
     setIsTyping(true);
 
+    if (rebookSuccess || dashboard.actionStatus === "Rebooked") {
+      try {
+        const decision = await interpretMessage.mutateAsync({
+          data: {
+            text: userText,
+            bookingReference: dashboard.booking.bookingReference,
+          },
+        });
+        if (!decision.clarification) throw new Error("Completed booking response unavailable.");
+        addMessage(decision.clarification, "ai");
+      } catch {
+        addMessage("I couldn't check your booking right now. Please try again.", "ai");
+      } finally {
+        setIsTyping(false);
+      }
+      return;
+    }
+
     // Authorization is checked deterministically, separately from model interpretation.
     if (awaitingConfirmationFor && /^(?:yes(?:,\s*confirm)?|confirm)(?:\s+(?:the\s+)?rebooking)?[.!]?\s*$/i.test(userText)) {
         try {
@@ -155,6 +173,8 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
 
           addMessage(`Great! I have confirmed your new flight ${awaitingConfirmationFor}.`, 'ai');
            setAwaitingConfirmationFor(null);
+           setShowingOptions(false);
+           setRebookSuccess(true);
           
           // 2. Send Itinerary
            later(async () => {

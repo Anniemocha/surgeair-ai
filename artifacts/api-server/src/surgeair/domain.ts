@@ -335,6 +335,10 @@ function minutes(time: string): number {
   return Number(hours) * 60 + Number(mins);
 }
 
+function completedBookingReply(): string {
+  return `Your booking has already been updated to ${booking.currentFlight.flightNumber}.`;
+}
+
 function addActivity(label: string, detail: string) {
   activities.push({
     id: `activity-${activities.length + 1}`,
@@ -532,6 +536,15 @@ const store = {
     presentedFlightNumbers: string[] = [],
   ) {
     if (reference.toUpperCase() !== booking.bookingReference) return null;
+    if (booking.status === "Rebooked") {
+      return {
+        intent: "unknown" as const,
+        arrivalBefore: null,
+        selectedFlight: null,
+        provider: "local" as const,
+        clarification: completedBookingReply(),
+      };
+    }
     const routeAlternatives = activeScenario.alternatives
       .filter(
         (flight) =>
@@ -662,6 +675,11 @@ const store = {
   },
 
   prepareRebooking(reference: string, newFlightNumber: string) {
+    if (reference.toUpperCase() === booking.bookingReference && booking.status === "Rebooked") {
+      return {
+        error: completedBookingReply(),
+      } as const;
+    }
     const target = flights.get(newFlightNumber.toUpperCase());
     if (
       reference.toUpperCase() !== booking.bookingReference ||
@@ -694,6 +712,11 @@ const store = {
   },
 
   rebook(reference: string, newFlightNumber: string, confirmed: boolean) {
+    if (reference.toUpperCase() === booking.bookingReference && booking.status === "Rebooked") {
+      return {
+        error: completedBookingReply(),
+      } as const;
+    }
     if (!confirmed) {
       const pending = this.prepareRebooking(reference, newFlightNumber);
       if ("error" in pending) return pending;

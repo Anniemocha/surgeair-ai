@@ -47,6 +47,16 @@ for (const channel of ["SMS", "WhatsApp", "RCS"] as const) {
     assert.equal(store.getDashboard().orchestration.currentChannel, channel);
     assert.equal(store.captureState().events.at(-1)?.channel, channel.toLowerCase());
   }
+
+  // Test the recorded success state without invoking SES or an external booking service.
+  assert.equal(store.getDashboard().activities.some((activity) => activity.label === "Email delivered via Amazon SES"), false);
+  const confirmation = store.rebook("SG4821", "SA218", true);
+  assert.ok("booking" in confirmation);
+  store.markItinerarySent("Email", true);
+  assert.equal(store.getDashboard().orchestration.currentChannel, channel);
+  assert.equal(store.getDashboard().activities.some((activity) => activity.label === "Email delivered via Amazon SES"), true);
+  assert.equal(store.captureState().events.at(-1)?.eventType, "ITINERARY_SENT");
+  assert.equal(store.captureState().events.at(-1)?.channel, "email");
 }
 
 const ambiguous = createSurgeAirStore();

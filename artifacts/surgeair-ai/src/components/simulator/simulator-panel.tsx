@@ -23,13 +23,15 @@ import {
   Signal, 
   Send, 
   Bot, 
-  Plane
+  Plane,
+  CheckCircle2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { wasItineraryEmailDelivered } from "./email-delivery-activity";
 
 interface SimulatorPanelProps {
   dashboard: Dashboard;
@@ -96,6 +98,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   const interpretMessage = useInterpretMessage();
   const selectConversationChannel = useSelectConversationChannel();
   const channels = ["SMS", "WhatsApp", "RCS", "Email"] as const;
+  const emailDelivered = wasItineraryEmailDelivered(dashboard.activities);
 
   const handleSelectChannel = async (channel: "SMS" | "WhatsApp" | "RCS") => {
     if (isTyping || selectConversationChannel.isPending || activeChannel === channel) return;
@@ -357,8 +360,16 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
             const simulated = channel === "WhatsApp" || channel === "RCS";
             const label = <>{channel}{simulated && <span className="font-normal opacity-70"> Simulated</span>}</>;
             return channel === "Email" ? (
-              <Badge key={channel} variant="outline" className="shrink-0 text-[9px]" data-testid="badge-channel-email" title="Itinerary delivery only">
-                {label}
+              <Badge
+                key={channel}
+                variant="outline"
+                className={`shrink-0 gap-1 text-[9px] ${emailDelivered ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300" : ""}`}
+                data-testid="badge-channel-email"
+                aria-label={emailDelivered ? "Email itinerary sent via Amazon SES" : "Email itinerary delivery"}
+                title={emailDelivered ? "Itinerary delivered via Amazon SES" : "Itinerary delivery only"}
+              >
+                {emailDelivered && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
+                Email{emailDelivered && <span className="font-semibold">Sent</span>}
               </Badge>
             ) : (
               <button

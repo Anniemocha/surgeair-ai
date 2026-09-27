@@ -2,6 +2,7 @@ import { createSurgeAirStore } from "../surgeair/domain";
 
 const store = createSurgeAirStore();
 const reference = "SG4821";
+store.searchAlternatives("LIS", "EDI", "18:00");
 const before = JSON.stringify(store.captureState());
 
 const clearTime = await store.interpretMessage(
@@ -79,6 +80,60 @@ const noSuitableDeadline = await sg9562.interpretMessage(
 if (noSuitableDeadline?.arrivalBefore !== "13:00" ||
     sg9562.searchAlternatives("FRA", "CPH", noSuitableDeadline.arrivalBefore).length !== 0) {
   throw new Error("SG9562 must not invent an alternative before 13:00.");
+}
+
+const single = createSurgeAirStore();
+if (single.searchAlternatives("LIS", "EDI", "13:00").length !== 0) {
+  throw new Error("A deadline with no suitable flights invented an option.");
+}
+const soleFlight = single.searchAlternatives("LIS", "EDI", "15:00");
+if (soleFlight.length !== 1 || soleFlight[0]?.flightNumber !== "SA218") {
+  throw new Error("The single suitable alternative must be SA218.");
+}
+const singleBeforeInterpretation = JSON.stringify(single.captureState());
+const accepted = await single.interpretMessage(
+  "That works for me.", reference, ["SA218", "SA218"],
+);
+if (accepted?.selectedFlight !== "SA218" || accepted.intent !== "select_alternative") {
+  throw new Error("Accepting the only presented flight must resolve to SA218.");
+}
+const unavailable = await single.interpretMessage("Book SA226 instead.", reference, ["SA226"]);
+if (unavailable?.selectedFlight !== null || !unavailable.clarification) {
+  throw new Error("An alternative excluded by the actual search was accepted.");
+}
+if (JSON.stringify(single.captureState()) !== singleBeforeInterpretation) {
+  throw new Error("Accepting a single option must not mutate the booking or confirmation.");
+}
+const singlePending = single.prepareRebooking(reference, accepted.selectedFlight);
+if ("error" in singlePending ||
+    single.getDashboard().confirmationStatus !== "Awaiting passenger confirmation" ||
+    single.getDashboard().booking.currentFlight.flightNumber !== "SA204") {
+  throw new Error("The single option must remain pending until explicit confirmation.");
+}
+const singleConfirmed = single.rebook(reference, "SA218", true);
+if (!("booking" in singleConfirmed)) {
+  throw new Error("Explicit confirmation did not complete the one-option rebooking.");
+}
+const afterCompletion = JSON.stringify(single.captureState());
+const duplicateSearch = await single.interpretMessage(
+  "Find another flight before 18:00.", reference, ["SA218"],
+);
+if (duplicateSearch?.clarification !== "Your booking has already been updated to SA218." ||
+    single.searchAlternatives("LIS", "EDI", "18:00").length !== 0 ||
+    JSON.stringify(single.captureState()) !== afterCompletion) {
+  throw new Error("A completed booking restarted the alternatives flow.");
+}
+
+const multiple = createSurgeAirStore();
+if (multiple.searchAlternatives("LIS", "EDI", "18:00")
+  .map((flight) => flight.flightNumber).join(",") !== "SA218,SA226") {
+  throw new Error("Two different suitable flights must remain distinct.");
+}
+const ambiguousSelection = await multiple.interpretMessage(
+  "That works for me.", reference, ["SA218", "SA226"],
+);
+if (ambiguousSelection?.selectedFlight !== null || !ambiguousSelection.clarification) {
+  throw new Error("A vague selection must not choose from two flights.");
 }
 
 process.stdout.write("Message interpretation safety checks passed.\n");

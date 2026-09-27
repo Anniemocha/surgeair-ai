@@ -8,7 +8,8 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:email-activity": "node --test src/components/simulator/email-delivery-activity.test.ts"
+    "test:email-activity": "node --test src/components/simulator/email-delivery-activity.test.ts",
+    "test:alternatives": "node --test src/components/simulator/alternatives.test.ts"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

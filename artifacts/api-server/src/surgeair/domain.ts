@@ -553,10 +553,13 @@ const store = {
           flight.status === "Available",
       )
       .map((flight) => flight.flightNumber.toUpperCase());
+    const searchedAlternatives = new Set(conversation.alternativeFlights);
     const presentedAlternatives = presentedFlightNumbers
       .map((flightNumber) => flightNumber.toUpperCase())
       .filter((flightNumber, index, list) =>
-        routeAlternatives.includes(flightNumber) && list.indexOf(flightNumber) === index,
+        routeAlternatives.includes(flightNumber) &&
+        searchedAlternatives.has(flightNumber) &&
+        list.indexOf(flightNumber) === index,
       );
     const interpretation = await messageOrchestrator.interpret(content, {
       passengerName: booking.passengerName,
@@ -569,14 +572,17 @@ const store = {
     });
 
     const explicitFlight = content.toUpperCase().match(/\bSA\d{3}\b/)?.[0] ?? null;
+    const acceptsPresentedOption =
+      /^(?:(?:that|this|it)(?:\s+one)?\s+(?:works(?:\s+for\s+me)?|looks good|is fine|is okay)|(?:i(?:'ll| will)?\s+)?(?:take|choose|pick|book)\s+(?:that|this|it)(?:\s+one)?)[.!]?$/i.test(content.trim());
     const proposedFlight = interpretation.selectedFlight?.toUpperCase() ?? null;
     const selectedFlight =
-      proposedFlight &&
-      routeAlternatives.includes(proposedFlight) &&
-      (presentedAlternatives.includes(proposedFlight) ||
-        explicitFlight === proposedFlight)
-        ? proposedFlight
-        : null;
+      acceptsPresentedOption
+        ? presentedAlternatives.length === 1 ? presentedAlternatives[0]! : null
+        : proposedFlight && routeAlternatives.includes(proposedFlight) &&
+          searchedAlternatives.has(proposedFlight) &&
+          (presentedAlternatives.includes(proposedFlight) || explicitFlight === proposedFlight)
+          ? proposedFlight
+          : null;
     const groundedArrival = extractClearArrivalBefore(content);
     const arrivalBefore =
       groundedArrival && interpretation.constraints.arrivalBefore === groundedArrival
@@ -586,6 +592,7 @@ const store = {
       /\b(?:before|by|no later than|later than|arrive(?:s|ing)? by)\s+(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/i.test(content) &&
       arrivalBefore === null;
     const selectionRequested =
+      acceptsPresentedOption ||
       /\b(?:first|second|third|option\s*\d+|flight\s+SA\d{3}|SA\d{3})\b/i.test(content);
     const clarification = interpretation.destination &&
       interpretation.destination !== booking.destination
@@ -599,7 +606,7 @@ const store = {
         : null;
 
     return {
-      intent: interpretation.intent,
+      intent: selectedFlight ? "select_alternative" : interpretation.intent,
       arrivalBefore,
       selectedFlight,
       provider: interpretation.provider,
@@ -633,6 +640,7 @@ const store = {
     destination: string,
     arrivalBefore?: string,
   ) {
+    if (booking.status === "Rebooked") return [];
     const constraint = arrivalBefore ? minutes(arrivalBefore) : Number.MAX_VALUE;
     const matches = [...flights.values()].filter(
       (flight) =>

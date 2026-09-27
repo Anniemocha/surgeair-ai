@@ -32,6 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { wasItineraryEmailDelivered } from "./email-delivery-activity";
+import { describeAlternatives, distinctAlternatives } from "./alternatives";
 
 interface SimulatorPanelProps {
   dashboard: Dashboard;
@@ -259,10 +260,10 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
       }
 
       if (/\blater\b/i.test(userText) && /\b(?:flight|option|anything|something)\b/i.test(userText)) {
-        const available = await queryClient.fetchQuery(getSearchAlternativeFlightsQueryOptions({
+        const available = distinctAlternatives(await queryClient.fetchQuery(getSearchAlternativeFlightsQueryOptions({
           origin: dashboard.booking.origin,
           destination: dashboard.booking.destination,
-        }));
+        })));
         const latestDeparture = showingOptions && alternativeFlights.length
           ? [...alternativeFlights].sort((a, b) => b.departure.localeCompare(a.departure))[0].departure
           : dashboard.booking.currentFlight.departure;
@@ -272,7 +273,9 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
           setShowingOptions(true);
           setAwaitingRequirement(false);
           setNoSuitableOptions(null);
-          addMessage(`Available later flights on your route: ${laterFlights.map(f => `${f.flightNumber} departs ${f.departure} and arrives ${f.arrival}`).join("; ")}. Your booking is unchanged. Which would you prefer?`, "ai");
+          addMessage(laterFlights.length === 1
+            ? `I found one later alternative on your route: ${laterFlights[0]!.flightNumber} departs ${laterFlights[0]!.departure} and arrives ${laterFlights[0]!.arrival}. Your booking is unchanged. Would you like to select it?`
+            : `Available later flights on your route: ${laterFlights.map(f => `${f.flightNumber} departs ${f.departure} and arrives ${f.arrival}`).join("; ")}. Your booking is unchanged. Which would you prefer?`, "ai");
         } else {
           addMessage("There are no later available flights on your route in the current schedule. Your booking is unchanged.", "ai");
         }
@@ -292,26 +295,23 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
         return;
       }
 
-      const flights = await queryClient.fetchQuery(getSearchAlternativeFlightsQueryOptions({
+      const flights = distinctAlternatives(await queryClient.fetchQuery(getSearchAlternativeFlightsQueryOptions({
         origin: dashboard.booking.origin,
         destination: dashboard.booking.destination,
         arrivalBefore,
-      }));
+      })));
       if (flights.length > 0) {
         setNoSuitableOptions(null);
         setAlternativeFlights(flights);
-        const optionsText = flights.map((f, idx) =>
-          `${idx + 1}. ${f.flightNumber} departing at ${f.departure} and arriving at ${f.arrival}`
-        ).join("\n");
-        addMessage(`I found ${flights.length} alternative ${flights.length === 1 ? "flight" : "flights"} arriving before ${arrivalBefore}:\n\n${optionsText}\n\nWhich one would you prefer?`, "ai");
+        addMessage(describeAlternatives(flights, arrivalBefore), "ai");
         setAwaitingRequirement(false);
         setShowingOptions(true);
         setAwaitingConfirmationFor(null);
       } else {
-        const available = await queryClient.fetchQuery(getSearchAlternativeFlightsQueryOptions({
+        const available = distinctAlternatives(await queryClient.fetchQuery(getSearchAlternativeFlightsQueryOptions({
           origin: dashboard.booking.origin,
           destination: dashboard.booking.destination,
-        }));
+        })));
         setAlternativeFlights([]);
         setShowingOptions(false);
         setAwaitingRequirement(true);

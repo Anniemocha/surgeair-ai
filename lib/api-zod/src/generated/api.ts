@@ -91,6 +91,77 @@ export const GetDashboardResponse = zod.object({
 
 
 /**
+ * @summary List fictional passenger scenarios
+ */
+export const ListPassengersResponseItem = zod.object({
+  "bookingReference": zod.string(),
+  "passengerName": zod.string(),
+  "travelers": zod.number().int(),
+  "origin": zod.string(),
+  "destination": zod.string(),
+  "originalFlight": zod.object({
+  "flightNumber": zod.string(),
+  "origin": zod.string(),
+  "destination": zod.string(),
+  "departure": zod.string(),
+  "arrival": zod.string(),
+  "status": zod.string(),
+  "delayMinutes": zod.number().int(),
+  "gate": zod.string().nullish(),
+  "aircraft": zod.string().nullish()
+}),
+  "disruptionReason": zod.string(),
+  "scenarioType": zod.string(),
+  "suggestedRequirement": zod.string(),
+  "revisedDeparture": zod.string().optional(),
+  "revisedArrival": zod.string().optional(),
+  "terminal": zod.string().optional()
+})
+export const ListPassengersResponse = zod.array(ListPassengersResponseItem)
+
+
+/**
+ * @summary Open a fictional scenario in the current demo session
+ */
+export const SelectPassengerBody = zod.object({
+  "bookingReference": zod.string()
+})
+
+export const SelectPassengerResponse = zod.object({
+  "bookingReference": zod.string()
+})
+
+
+/**
+ * Uses the active session booking for context. Presented flight numbers are only hints and are accepted only when they match available alternatives on that booking's route. This endpoint never sends outbound messages or performs rebooking.
+ * @summary Interpret passenger text without receiving a channel message or taking action
+ */
+export const interpretMessageBodyTextMax = 2000;
+
+export const interpretMessageBodyPresentedFlightNumbersItemRegExp = new RegExp('^[Ss][Aa][0-9]{3}$');
+export const interpretMessageBodyPresentedFlightNumbersMax = 20;
+
+
+
+export const InterpretMessageBody = zod.object({
+  "text": zod.string().min(1).max(interpretMessageBodyTextMax),
+  "bookingReference": zod.string(),
+  "presentedFlightNumbers": zod.array(zod.string().regex(interpretMessageBodyPresentedFlightNumbersItemRegExp)).max(interpretMessageBodyPresentedFlightNumbersMax).optional()
+})
+
+export const interpretMessageResponseArrivalBeforeRegExp = new RegExp('^(?:[01][0-9]|2[0-3]):[0-5][0-9]$');
+
+
+export const InterpretMessageResponse = zod.object({
+  "intent": zod.string(),
+  "arrivalBefore": zod.string().regex(interpretMessageResponseArrivalBeforeRegExp).nullable(),
+  "selectedFlight": zod.string().nullable(),
+  "provider": zod.enum(['local', 'amazon-bedrock']),
+  "clarification": zod.string().nullable()
+})
+
+
+/**
  * Resets only the current browser session to SG4821 on delayed SA204. No request body or booking identifier is accepted.
  * @summary Reset the current session's canonical SurgeAir demo state
  */

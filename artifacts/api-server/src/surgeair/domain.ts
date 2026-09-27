@@ -22,10 +22,12 @@ import {
   type SurgeAirEventType,
 } from "../events/event-store";
 import { createModelProvider } from "../models/model-provider-factory";
+import { extractClearArrivalBefore } from "../models/model-provider";
 import { LocalOperationalLogger } from "../observability/operational-logger";
 import { JsonReadinessStateStore } from "../observability/readiness-state-store";
 import { MessageOrchestrator } from "../orchestration/message-orchestrator";
 import { resolve } from "node:path";
+import { passengerScenarios, type PassengerScenario } from "./scenarios";
 
 export type Channel = "SMS" | "WhatsApp" | "RCS" | "Email";
 
@@ -111,68 +113,39 @@ export class SimulatedItinerarySender implements ItinerarySender {
   }
 }
 
-const flights = new Map<string, FlightRecord>([
-  [
-    "SA204",
-    {
-      flightNumber: "SA204",
-      origin: "LIS",
-      destination: "EDI",
-      departure: "10:15",
-      arrival: "13:25",
-      status: "Delayed",
-      delayMinutes: 180,
-      gate: "14",
-      aircraft: "Airbus A320",
-    },
-  ],
-  [
-    "SA218",
-    {
-      flightNumber: "SA218",
-      origin: "LIS",
-      destination: "EDI",
-      departure: "11:30",
-      arrival: "14:40",
-      status: "Available",
-      delayMinutes: 0,
-      gate: "21",
-      aircraft: "Airbus A321neo",
-    },
-  ],
-  [
-    "SA226",
-    {
-      flightNumber: "SA226",
-      origin: "LIS",
-      destination: "EDI",
-      departure: "13:10",
-      arrival: "16:20",
-      status: "Available",
-      delayMinutes: 0,
-      gate: "18",
-      aircraft: "Boeing 737-8",
-    },
-  ],
-]);
+const flights = new Map<string, FlightRecord>(
+  passengerScenarios.flatMap((scenario) =>
+    [scenario.originalFlight, ...scenario.alternatives].map(
+      (flight) => [flight.flightNumber, flight] as const,
+    ),
+  ),
+);
 
-export function createCanonicalDemoState() {
+function scenarioFor(reference: string): PassengerScenario | undefined {
+  return passengerScenarios.find(
+    (scenario) => scenario.bookingReference === reference.toUpperCase(),
+  );
+}
+
+export function createCanonicalDemoState(reference = "SG4821") {
+  const scenario = scenarioFor(reference);
+  if (!scenario) throw new Error("Passenger scenario not found.");
   const booking: BookingRecord = {
-    bookingReference: "SG4821",
-    passengerId: "PAX-1042",
-    passengerName: "Draymond Hillsend",
-    currentFlight: flights.get("SA204")!,
-    origin: "LIS",
-    destination: "EDI",
+    bookingReference: scenario.bookingReference,
+    passengerId: scenario.passengerId,
+    passengerName: scenario.passengerName,
+    currentFlight: { ...scenario.originalFlight },
+    origin: scenario.origin,
+    destination: scenario.destination,
     status: "Disrupted",
   };
   const conversation: ConversationState = {
     passengerId: booking.passengerId,
     passengerName: booking.passengerName,
     bookingReference: booking.bookingReference,
-    currentFlight: "SA204",
-    origin: "LIS",
-    destination: "EDI",
+    currentFlight: scenario.originalFlight.flightNumber,
+    origin: scenario.origin,
+    destination: scenario.destination,
     currentChannel: "SMS",
     previousChannel: null,
     passengerRequest: null,
@@ -188,7 +161,9 @@ export function createCanonicalDemoState() {
       id: "msg-1",
       channel: "SMS",
       sender: "SurgeAir AI",
-      text: "Flight SA204 from Lisbon to Edinburgh is delayed by 3 hours. I can help you find another option.",
+      text: scenario.bookingReference === "SG4821"
+        ? "Flight SA204 from Lisbon to Edinburgh is delayed by 3 hours. I can help you find another option."
+        : `Flight ${scenario.originalFlight.flightNumber} from ${scenario.origin} to ${scenario.destination} is ${scenario.originalFlight.status.toLowerCase()}. ${scenario.disruptionReason}. I can help you find another option.`,
       timestamp: "10:03",
     },
   ];
@@ -198,7 +173,8 @@ export function createCanonicalDemoState() {
 export function createSurgeAirStore() {
 const { booking, conversation, messages } = createCanonicalDemoState();
 
-const conversationId = "conv-sg4821-disruption";
+let activeScenario = passengerScenarios[0]!;
+let conversationId = "conv-sg4821-disruption";
 const awsReadinessConfig = getAwsReadinessConfig();
 const readinessStore = new JsonReadinessStateStore(
   resolve(process.cwd(), "data/integration-readiness.json"),
@@ -262,36 +238,23 @@ const messageOrchestrator = new MessageOrchestrator(
   operationalLogger,
 );
 
-const activities: ActivityRecord[] = [
-  {
-    id: "activity-1",
-    label: "Flight disruption detected",
-    detail: "SA204 delayed by 3 hours",
-    status: "COMPLETED",
-    timestamp: "10:02",
-  },
-  {
-    id: "activity-2",
-    label: "Passenger notified",
-    detail: "SMS sent to Draymond Hillsend",
-    status: "COMPLETED",
-    timestamp: "10:03",
-  },
-];
+const activities: ActivityRecord[] = canonicalActivities();
 
 function canonicalActivities(): ActivityRecord[] {
   return [
     {
       id: "activity-1",
       label: "Flight disruption detected",
-      detail: "SA204 delayed by 3 hours",
+      detail: activeScenario.bookingReference === "SG4821"
+        ? "SA204 delayed by 3 hours"
+        : `${activeScenario.originalFlight.flightNumber}: ${activeScenario.disruptionReason}`,
       status: "COMPLETED",
       timestamp: "10:02",
     },
     {
       id: "activity-2",
       label: "Passenger notified",
-      detail: "SMS sent to Draymond Hillsend",
+      detail: `SMS sent to ${activeScenario.passengerName}`,
       status: "COMPLETED",
       timestamp: "10:03",
     },
@@ -309,12 +272,15 @@ function canonicalEvents(
       eventType: "FLIGHT_DISRUPTION_DETECTED",
       channel: "sms",
       timestamp: new Date().toISOString(),
-      metadata: { flightNumber: "SA204", delayMinutes: 180 },
+      metadata: {
+        flightNumber: activeScenario.originalFlight.flightNumber,
+        delayMinutes: activeScenario.originalFlight.delayMinutes,
+      },
     },
     {
       eventId: "evt-2",
       conversationId,
-      passengerId: booking.passengerId,
+      passengerId: sourceBooking.passengerId,
       eventType: "PASSENGER_NOTIFIED",
       channel: "sms",
       timestamp: new Date().toISOString(),
@@ -324,7 +290,7 @@ function canonicalEvents(
 }
 
 function createCanonicalDemoSnapshot(): DemoStateSnapshot {
-  const canonical = createCanonicalDemoState();
+  const canonical = createCanonicalDemoState(activeScenario.bookingReference);
   return {
     booking: {
       ...canonical.booking,
@@ -351,7 +317,10 @@ eventStore.append({
   passengerId: booking.passengerId,
   eventType: "FLIGHT_DISRUPTION_DETECTED",
   channel: "sms",
-  metadata: { flightNumber: "SA204", delayMinutes: 180 },
+  metadata: {
+    flightNumber: activeScenario.originalFlight.flightNumber,
+    delayMinutes: activeScenario.originalFlight.delayMinutes,
+  },
 });
 eventStore.append({
   conversationId,
@@ -435,6 +404,8 @@ const store = {
   },
 
   restoreState(snapshot: DemoStateSnapshot) {
+    activeScenario = scenarioFor(snapshot.booking.bookingReference) ?? activeScenario;
+    conversationId = `conv-${activeScenario.bookingReference.toLowerCase()}-disruption`;
     Object.assign(booking, {
       ...snapshot.booking,
       currentFlight: { ...snapshot.booking.currentFlight },
@@ -471,6 +442,8 @@ const store = {
   },
 
   resetDemo() {
+    activeScenario = passengerScenarios[0]!;
+    conversationId = "conv-sg4821-disruption";
     const canonical = createCanonicalDemoState();
     Object.assign(booking, {
       ...canonical.booking,
@@ -500,6 +473,35 @@ const store = {
     };
   },
 
+  listPassengers() {
+    return passengerScenarios.map(({ passengerId: _passengerId, alternatives: _alternatives, ...scenario }) => ({
+      ...scenario,
+      originalFlight: { ...scenario.originalFlight },
+    }));
+  },
+
+  selectPassenger(reference: string) {
+    const next = scenarioFor(reference);
+    if (!next) return null;
+    activeScenario = next;
+    conversationId = `conv-${next.bookingReference.toLowerCase()}-disruption`;
+    const canonical = createCanonicalDemoState(next.bookingReference);
+    Object.assign(booking, canonical.booking);
+    Object.assign(conversation, canonical.conversation);
+    conversationRepository.restore([{
+      ...canonical.conversation,
+      conversationId,
+      messages: canonical.messages,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastToolCalled: null,
+      currentAgentState: "Disruption detected",
+    }]);
+    activities.splice(0, activities.length, ...canonicalActivities());
+    eventStore.restore(canonicalEvents(canonical.booking));
+    return { bookingReference: next.bookingReference };
+  },
+
   async recordPassengerMessage(channel: Channel, content: string) {
     return messageOrchestrator.receive({
       messageId: `inbound-${Date.now()}`,
@@ -511,6 +513,74 @@ const store = {
       content,
       timestamp: new Date().toISOString(),
     });
+  },
+
+  async interpretMessage(
+    content: string,
+    reference: string,
+    presentedFlightNumbers: string[] = [],
+  ) {
+    if (reference.toUpperCase() !== booking.bookingReference) return null;
+    const routeAlternatives = activeScenario.alternatives
+      .filter(
+        (flight) =>
+          flight.origin === booking.origin &&
+          flight.destination === booking.destination &&
+          flight.status === "Available",
+      )
+      .map((flight) => flight.flightNumber.toUpperCase());
+    const presentedAlternatives = presentedFlightNumbers
+      .map((flightNumber) => flightNumber.toUpperCase())
+      .filter((flightNumber, index, list) =>
+        routeAlternatives.includes(flightNumber) && list.indexOf(flightNumber) === index,
+      );
+    const interpretation = await messageOrchestrator.interpret(content, {
+      passengerName: booking.passengerName,
+      bookingReference: booking.bookingReference,
+      currentFlight: booking.currentFlight.flightNumber,
+      origin: booking.origin,
+      destination: booking.destination,
+      disruptionStatus: booking.currentFlight.status,
+      presentedAlternatives,
+    });
+
+    const explicitFlight = content.toUpperCase().match(/\bSA\d{3}\b/)?.[0] ?? null;
+    const proposedFlight = interpretation.selectedFlight?.toUpperCase() ?? null;
+    const selectedFlight =
+      proposedFlight &&
+      routeAlternatives.includes(proposedFlight) &&
+      (presentedAlternatives.includes(proposedFlight) ||
+        explicitFlight === proposedFlight)
+        ? proposedFlight
+        : null;
+    const groundedArrival = extractClearArrivalBefore(content);
+    const arrivalBefore =
+      groundedArrival && interpretation.constraints.arrivalBefore === groundedArrival
+        ? groundedArrival
+        : null;
+    const timeNeedsClarification =
+      /\b(?:before|by|no later than|later than|arrive(?:s|ing)? by)\s+(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/i.test(content) &&
+      arrivalBefore === null;
+    const selectionRequested =
+      /\b(?:first|second|third|option\s*\d+|flight\s+SA\d{3}|SA\d{3})\b/i.test(content);
+    const clarification = interpretation.destination &&
+      interpretation.destination !== booking.destination
+      ? `Your active booking goes to ${booking.destination}. Did you mean this booking's destination?`
+      : timeNeedsClarification
+      ? "Should that arrival time be AM or PM?"
+      : selectionRequested && !selectedFlight
+        ? presentedAlternatives.length
+          ? "Which presented flight would you like to select?"
+          : "Please provide the flight number you want to select."
+        : null;
+
+    return {
+      intent: interpretation.intent,
+      arrivalBefore,
+      selectedFlight,
+      provider: interpretation.provider,
+      clarification,
+    };
   },
 
   getBooking(reference: string) {
@@ -542,14 +612,21 @@ const store = {
     const constraint = arrivalBefore ? minutes(arrivalBefore) : Number.MAX_VALUE;
     const matches = [...flights.values()].filter(
       (flight) =>
+        activeScenario.alternatives.some(
+          (alternative) => alternative.flightNumber === flight.flightNumber,
+        ) &&
         flight.origin === origin.toUpperCase() &&
         flight.destination === destination.toUpperCase() &&
+        flight.origin === booking.origin &&
+        flight.destination === booking.destination &&
         flight.status === "Available" &&
         minutes(flight.arrival) < constraint,
     );
 
     conversation.passengerRequest =
-      "I need to arrive in Edinburgh before 6 PM.";
+      arrivalBefore
+        ? `I need to arrive before ${arrivalBefore}.`
+        : "I need an alternative flight.";
     conversation.detectedIntent = "Find alternative flight";
     conversation.arrivalConstraint = arrivalBefore ?? null;
     conversation.alternativeFlights = matches.map(
@@ -577,7 +654,11 @@ const store = {
 
   prepareRebooking(reference: string, newFlightNumber: string) {
     const target = flights.get(newFlightNumber.toUpperCase());
-    if (reference.toUpperCase() !== booking.bookingReference || !target) {
+    if (
+      reference.toUpperCase() !== booking.bookingReference ||
+      !target ||
+      !activeScenario.alternatives.some((flight) => flight.flightNumber === target.flightNumber)
+    ) {
       return { error: "Booking or flight not found." } as const;
     }
 
@@ -618,7 +699,11 @@ const store = {
       confirmationReceived: confirmed,
     });
     const target = flights.get(newFlightNumber.toUpperCase());
-    if (reference.toUpperCase() !== booking.bookingReference || !target) {
+    if (
+      reference.toUpperCase() !== booking.bookingReference ||
+      !target ||
+      !activeScenario.alternatives.some((flight) => flight.flightNumber === target.flightNumber)
+    ) {
       operationalLogger.record("rebooking_failure", {
         bookingReference: reference,
         newFlight: newFlightNumber,
@@ -671,7 +756,7 @@ const store = {
     });
     addMessage(
       "RCS",
-      "Draymond Hillsend",
+      booking.passengerName,
       `Yes, confirm rebooking to ${target.flightNumber}.`,
     );
     addActivity("Explicit confirmation received", target.flightNumber);
@@ -715,11 +800,16 @@ const store = {
     const body = [
       `Passenger: ${booking.passengerName}`,
       `Booking: ${booking.bookingReference}`,
-      `Route: Lisbon (${booking.origin}) → Edinburgh (${booking.destination})`,
+      activeScenario.bookingReference === "SG4821"
+        ? `Route: Lisbon (${booking.origin}) → Edinburgh (${booking.destination})`
+        : `Route: ${booking.origin} → ${booking.destination}`,
       `New flight: ${booking.currentFlight.flightNumber}`,
       `Departure: ${booking.currentFlight.departure}`,
       `Arrival: ${booking.currentFlight.arrival}`,
       `Status: ${booking.status}`,
+      ...(activeScenario.bookingReference === "SG4821"
+        ? []
+        : [`Travelers: ${activeScenario.travelers}`]),
     ].join("\n");
     const delivery = await emailChannel.sendItinerary(subject, body);
     this.markItinerarySent("Email", delivery.provider === "amazon-ses");
@@ -786,7 +876,7 @@ const store = {
     const modelExecution = operationalLogger.getLatestModelExecution();
     return {
       booking,
-      disruption: flights.get("SA204")!,
+      disruption: activeScenario.originalFlight,
       messages: stored.messages,
       activities,
       selectedAlternative: conversation.selectedFlight,

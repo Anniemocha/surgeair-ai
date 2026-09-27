@@ -3,6 +3,11 @@ import {
   GetBookingParams,
   GetBookingResponse,
   GetDashboardResponse,
+  ListPassengersResponse,
+  InterpretMessageBody,
+  InterpretMessageResponse,
+  SelectPassengerBody,
+  SelectPassengerResponse,
   GetFlightStatusParams,
   GetFlightStatusResponse,
   PrepareRebookingBody,
@@ -47,6 +52,46 @@ const emailTestRateLimiter = new SmsTestRateLimiter(
 );
 router.get("/dashboard", (_req, res) => {
   res.json(GetDashboardResponse.parse(_req.surgeAirStore.getDashboard()));
+});
+
+router.get("/passengers", (req, res) => {
+  res.json(ListPassengersResponse.parse(req.surgeAirStore.listPassengers()));
+});
+
+router.post("/passengers/select", (req, res): void => {
+  if (!isSameOriginRequest(req)) {
+    res.status(403).json({ error: "Cross-site selection requests are not allowed." });
+    return;
+  }
+  const { bookingReference } = SelectPassengerBody.parse(req.body);
+  const result = req.surgeAirStore.selectPassenger(bookingReference);
+  if (!result) {
+    res.status(404).json({ error: "Booking not found." });
+    return;
+  }
+  res.json(SelectPassengerResponse.parse(result));
+});
+
+router.post("/messages/interpret", async (req, res): Promise<void> => {
+  if (!isSameOriginRequest(req)) {
+    res.status(403).json({ error: "Cross-site interpretation requests are not allowed." });
+    return;
+  }
+  const input = InterpretMessageBody.safeParse(req.body);
+  if (!input.success) {
+    res.status(400).json({ error: "Text and an active booking reference are required." });
+    return;
+  }
+  const result = await req.surgeAirStore.interpretMessage(
+    input.data.text,
+    input.data.bookingReference,
+    input.data.presentedFlightNumbers ?? [],
+  );
+  if (!result) {
+    res.status(404).json({ error: "Booking is not the active session booking." });
+    return;
+  }
+  res.json(InterpretMessageResponse.parse(result));
 });
 
 router.post("/demo/reset", (req, res): void => {

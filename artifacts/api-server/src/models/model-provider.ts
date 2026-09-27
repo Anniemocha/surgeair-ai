@@ -14,6 +14,7 @@ export interface PassengerContext {
   disruptionStatus?: string;
   selectedFlight?: string | null;
   confirmationStatus?: string;
+  presentedAlternatives?: string[];
 }
 
 export interface PassengerInterpretation {
@@ -45,24 +46,16 @@ export class LocalModelProvider implements ModelProvider {
 
   async interpretPassengerRequest(
     content: string,
+    context: PassengerContext = {},
   ): Promise<PassengerInterpretation> {
     const normalized = content.toLowerCase();
-    const timeMatch = normalized.match(
-      /(?:before|by)\s+([0-2]?\d)(?::([0-5]\d))?\s*(am|pm)?/,
-    );
-    let arrivalBefore: string | null = null;
+    const arrivalBefore = extractClearArrivalBefore(normalized);
 
-    if (timeMatch) {
-      let hour = Number(timeMatch[1]);
-      const minutes = timeMatch[2] ?? "00";
-      const period = timeMatch[3];
-      if (period === "pm" && hour < 12) hour += 12;
-      if (period === "am" && hour === 12) hour = 0;
-      arrivalBefore = `${String(hour).padStart(2, "0")}:${minutes}`;
-    }
-
+    const explicitFlight = content.toUpperCase().match(/\bSA\d{3}\b/)?.[0] ?? null;
+    const selectedOption = /\b(?:first|option\s*(?:1|one)|number\s*1)\b/i.test(content);
     const selectedFlight =
-      content.toUpperCase().match(/\bSA\d{3}\b/)?.[0] ?? null;
+      explicitFlight ??
+      (selectedOption ? context.presentedAlternatives?.[0] ?? null : null);
     const intent = normalized.includes("confirm")
       ? "confirm_rebooking"
       : selectedFlight
@@ -106,4 +99,25 @@ export class LocalModelProvider implements ModelProvider {
     }
     return "I can help find an alternative that matches your arrival time.";
   }
+}
+
+export function extractClearArrivalBefore(text: string): string | null {
+  const numberWords: Record<string, number> = {
+    one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+    seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  };
+  const match = text.match(
+    /\b(?:before|by|no later than|later than|arrive(?:s|ing)? by)\s+(?:(\d{1,2})(?::([0-5]\d))?|(\bone|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve\b))(?:\s*(a\.?m\.?|p\.?m\.?)|\s+in the (morning|afternoon|evening))?\b/i,
+  );
+  if (!match) return null;
+  let hour = Number(match[1] ?? numberWords[match[3]?.toLowerCase() ?? ""]);
+  const minute = match[2] ?? "00";
+  const period = match[4]?.replaceAll(".", "").toLowerCase()
+    ?? (match[5]?.toLowerCase() === "morning" ? "am" : match[5] ? "pm" : undefined);
+  if (hour < 0 || hour > 23 || (period && (hour < 1 || hour > 12))) return null;
+  if (period === "pm" && hour < 12) hour += 12;
+  if (period === "am" && hour === 12) hour = 0;
+  // Bare hours 1–12 have no deterministic AM/PM interpretation.
+  if (!period && hour >= 1 && hour <= 12) return null;
+  return `${String(hour).padStart(2, "0")}:${minute}`;
 }

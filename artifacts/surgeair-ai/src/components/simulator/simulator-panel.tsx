@@ -5,10 +5,12 @@ import {
   Flight
 } from "@workspace/api-client-react";
 import { 
-  useSearchAlternativeFlights,
+  useListPassengers,
+  getSearchAlternativeFlightsQueryOptions,
   usePrepareRebooking,
   useRebookFlight, 
   useSendItinerary,
+  useInterpretMessage,
   getGetDashboardQueryKey,
   getGetBookingQueryKey
 } from "@workspace/api-client-react";
@@ -20,8 +22,6 @@ import {
   Signal, 
   Send, 
   Bot, 
-  MoreVertical,
-  Phone,
   Plane
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,15 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   const [messages, setMessages] = useState<ConversationMessage[]>(dashboard.messages);
   const [inputValue, setInputValue] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const mounted = useRef(true);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; timers.current.forEach(clearTimeout); };
+  }, []);
+  const later = (callback: () => void, delay: number) => {
+    timers.current.push(setTimeout(() => { if (mounted.current) callback(); }, delay));
+  };
   
   // Conversation state machine
   const [isTyping, setIsTyping] = useState(false);
@@ -59,29 +68,26 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
     dashboard.orchestration.currentAgentState === "Presenting alternatives",
   );
   const [alternativeFlights, setAlternativeFlights] = useState<Flight[]>([]);
+  const [noSuitableOptions, setNoSuitableOptions] = useState<string | null>(null);
   const [awaitingConfirmationFor, setAwaitingConfirmationFor] = useState<string | null>(
     dashboard.confirmationStatus === "Awaiting passenger confirmation"
       ? dashboard.selectedAlternative
       : null,
   );
   const [rebookSuccess, setRebookSuccess] = useState(
-    dashboard.actionStatus === "COMPLETED",
+    dashboard.actionStatus === "Rebooked",
   );
-
-  const [searchParams, setSearchParams] = useState({
-    origin: dashboard.booking.origin,
-    destination: dashboard.booking.destination,
-    arrivalBefore: "18:00"
-  });
-
-  const searchFlights = useSearchAlternativeFlights(
-    searchParams,
-    { query: { enabled: false } as any }
-  );
+  const { data: scenarios } = useListPassengers();
+  const scenario = (Array.isArray(scenarios) ? scenarios : []).find(
+    (item: { bookingReference: string }) => item.bookingReference === dashboard.booking.bookingReference,
+  ) as { suggestedRequirement?: string | null } | undefined;
+  const suggestedRequirement = scenario?.suggestedRequirement?.trim() || "";
+  const suggestedTime = suggestedRequirement.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/)?.[0];
 
   const rebookFlight = useRebookFlight();
   const prepareRebooking = usePrepareRebooking();
   const sendItinerary = useSendItinerary();
+  const interpretMessage = useInterpretMessage();
   const channels = ["SMS", "WhatsApp", "RCS", "Email"] as const;
 
   // Scroll to bottom on new message
@@ -94,7 +100,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
 
   const addMessage = (text: string, sender: 'passenger' | 'ai') => {
     const newMessage: ConversationMessage = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       channel: 'SMS',
       sender,
       text,
@@ -105,7 +111,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
 
   const handleSend = async (textOverride?: string) => {
     const textToUse = textOverride || inputValue;
-    if (!textToUse.trim()) return;
+    if (!textToUse.trim() || isTyping) return;
     
     const userText = textToUse.trim();
     if (!textOverride) setInputValue("");
@@ -113,64 +119,8 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
     addMessage(userText, 'passenger');
     setIsTyping(true);
 
-    // State machine logic
-    if (awaitingRequirement) {
-      // Look for a time pattern, or just mock it to 18:00
-      const timeMatch = userText.match(/([0-2]?[0-9])[:h]?([0-5][0-9])/i);
-      let arrivalBefore = "18:00"; // default mock
-      if (timeMatch) {
-        const hh = timeMatch[1].padStart(2, '0');
-        const mm = timeMatch[2];
-        arrivalBefore = `${hh}:${mm}`;
-      }
-
-      setSearchParams(prev => ({ ...prev, arrivalBefore }));
-
-      setTimeout(async () => {
-        try {
-          const { data: flights } = await searchFlights.refetch();
-          if (flights && flights.length > 0) {
-            setAlternativeFlights(flights);
-            const optionsText = flights.slice(0, 3).map((f, idx) => 
-              `${idx + 1}. ${f.flightNumber} departing at ${f.departure} and arriving at ${f.arrival}`
-            ).join('\n');
-            addMessage(`I found alternative options arriving before ${arrivalBefore}. Options:\n\n${optionsText}\n\nWhich one would you prefer?`, 'ai');
-            setAwaitingRequirement(false);
-            setShowingOptions(true);
-          } else {
-            addMessage(`I couldn't find any flights arriving before ${arrivalBefore}. Could you provide another time?`, 'ai');
-          }
-        } catch (e) {
-          addMessage("Sorry, I'm having trouble connecting to the reservation system right now.", 'ai');
-        }
-        setIsTyping(false);
-      }, 1500);
-
-    } else if (showingOptions) {
-      setTimeout(async () => {
-        // Try to match flight number from user input
-        const selected = alternativeFlights.find(f => userText.toUpperCase().includes(f.flightNumber)) 
-                       || alternativeFlights[0]; // fallback to first if not explicitly named
-
-        try {
-          await prepareRebooking.mutateAsync({
-            data: {
-              bookingReference: dashboard.booking.bookingReference,
-              newFlight: selected.flightNumber
-            }
-          });
-          setAwaitingConfirmationFor(selected.flightNumber);
-          addMessage(`You've selected ${selected.flightNumber}. Shall I go ahead and confirm this rebooking for you? Reply YES or CONFIRM.`, 'ai');
-          setShowingOptions(false);
-          queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
-        } catch (e) {
-          addMessage("Sorry, I couldn't prepare that flight for confirmation. Please choose another option.", 'ai');
-        }
-        setIsTyping(false);
-      }, 1000);
-
-    } else if (awaitingConfirmationFor) {
-      if (userText.toLowerCase().includes('yes') || userText.toLowerCase().includes('confirm')) {
+    // Authorization is checked deterministically, separately from model interpretation.
+    if (awaitingConfirmationFor && /^(?:yes(?:,\s*confirm)?|confirm)(?:\s+(?:the\s+)?rebooking)?[.!]?\s*$/i.test(userText)) {
         try {
           // 1. Rebook
           await rebookFlight.mutateAsync({
@@ -182,46 +132,158 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
           });
 
           addMessage(`Great! I have confirmed your new flight ${awaitingConfirmationFor}.`, 'ai');
+           setAwaitingConfirmationFor(null);
           
           // 2. Send Itinerary
-          setTimeout(async () => {
+           later(async () => {
+             if (!mounted.current) return;
             setIsTyping(true);
-            await sendItinerary.mutateAsync({
-              data: {
-                bookingReference: dashboard.booking.bookingReference,
-                channel: 'EMAIL'
-              }
-            });
-            addMessage("I've also sent the updated itinerary to your email. Safe travels!", 'ai');
-            setIsTyping(false);
-
-            // Refresh authoritative booking state before showing success.
-            await Promise.all([
-              queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
-              queryClient.invalidateQueries({
-                queryKey: getGetBookingQueryKey(
-                  dashboard.booking.bookingReference,
-                ),
-              }),
-            ]);
-            setRebookSuccess(true);
+             try {
+               await sendItinerary.mutateAsync({ data: { bookingReference: dashboard.booking.bookingReference, channel: 'EMAIL' } });
+               addMessage("I've also sent the updated itinerary to your email. Safe travels!", 'ai');
+             } catch {
+               addMessage("Your flight is confirmed, but the itinerary email could not be sent. Please contact support for a copy.", "ai");
+             } finally {
+               await Promise.all([
+                 queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
+                 queryClient.invalidateQueries({ queryKey: getGetBookingQueryKey(dashboard.booking.bookingReference) }),
+               ]);
+               setRebookSuccess(true);
+               setIsTyping(false);
+             }
           }, 1000);
 
         } catch (e) {
           addMessage("Sorry, there was an error processing your rebooking. Please try again.", 'ai');
         }
-        setAwaitingConfirmationFor(null);
-      } else {
+      setIsTyping(false);
+      return;
+    }
+    if (awaitingConfirmationFor && /^(?:no|cancel)(?:[!.,\s]|$)/i.test(userText)) {
         addMessage("Okay, I won't rebook you on that flight. Would you like to see other options?", 'ai');
         setAwaitingConfirmationFor(null);
         setAwaitingRequirement(true);
-      }
-      setIsTyping(false);
-    } else {
-      setTimeout(() => {
-        addMessage("I'm here to help. Is there anything else you need?", 'ai');
         setIsTyping(false);
-      }, 1000);
+        return;
+    }
+
+    try {
+      // The existing backend model interprets the inbound message. Only validated,
+      // session-grounded decisions can reach airline search or preparation tools.
+      const decision = await interpretMessage.mutateAsync({
+        data: {
+          text: userText,
+          bookingReference: dashboard.booking.bookingReference,
+          presentedFlightNumbers: showingOptions ? alternativeFlights.map(f => f.flightNumber) : [],
+        },
+      });
+      if (decision.clarification) {
+        addMessage(decision.clarification, "ai");
+        return;
+      }
+
+      if (decision.selectedFlight) {
+        const selected = showingOptions
+          ? alternativeFlights.find(f => f.flightNumber === decision.selectedFlight)
+          : undefined;
+        if (!selected) {
+          addMessage("Please choose a flight from the alternatives shown for your booking.", "ai");
+          return;
+        }
+        try {
+          await prepareRebooking.mutateAsync({
+            data: {
+              bookingReference: dashboard.booking.bookingReference,
+              newFlight: selected.flightNumber,
+            },
+          });
+          setAwaitingConfirmationFor(selected.flightNumber);
+          setShowingOptions(false);
+          setAwaitingRequirement(false);
+          addMessage(`You've selected ${selected.flightNumber}. Shall I go ahead and confirm this rebooking for you? Reply YES or CONFIRM.`, "ai");
+          await queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        } catch {
+          addMessage("Sorry, I couldn't prepare that flight for confirmation. Please choose another option.", "ai");
+        }
+        return;
+      }
+
+      if (showingOptions && /\b(?:which|what).*(?:earliest|soonest)\b/i.test(userText)) {
+        const earliest = [...alternativeFlights].sort((a, b) => a.arrival.localeCompare(b.arrival))[0];
+        addMessage(earliest
+          ? `${earliest.flightNumber} arrives earliest at ${earliest.arrival}. Your booking is unchanged. Would you like to select it?`
+          : "I don't have an available option to compare.", "ai");
+        return;
+      }
+
+      if (/\blater\b/i.test(userText) && /\b(?:flight|option|anything|something)\b/i.test(userText)) {
+        const available = await queryClient.fetchQuery(getSearchAlternativeFlightsQueryOptions({
+          origin: dashboard.booking.origin,
+          destination: dashboard.booking.destination,
+        }));
+        const latestDeparture = showingOptions && alternativeFlights.length
+          ? [...alternativeFlights].sort((a, b) => b.departure.localeCompare(a.departure))[0].departure
+          : dashboard.booking.currentFlight.departure;
+        const laterFlights = available.filter(f => f.departure > latestDeparture);
+        if (laterFlights.length) {
+          setAlternativeFlights(laterFlights);
+          setShowingOptions(true);
+          setAwaitingRequirement(false);
+          setNoSuitableOptions(null);
+          addMessage(`Available later flights on your route: ${laterFlights.map(f => `${f.flightNumber} departs ${f.departure} and arrives ${f.arrival}`).join("; ")}. Your booking is unchanged. Which would you prefer?`, "ai");
+        } else {
+          addMessage("There are no later available flights on your route in the current schedule. Your booking is unchanged.", "ai");
+        }
+        await queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        return;
+      }
+
+      let arrivalBefore = decision.arrivalBefore;
+      const earlier = /\b(?:anything|something|flight|option).*\bearlier\b|\bearlier\b/i.test(userText);
+      if (!arrivalBefore && earlier && alternativeFlights.length > 0) {
+        arrivalBefore = [...alternativeFlights].sort((a, b) => a.arrival.localeCompare(b.arrival))[0].arrival;
+      }
+      if (!arrivalBefore) {
+        addMessage(awaitingRequirement
+          ? "What time do you need to arrive by? Please include AM or PM if you use a 12-hour time."
+          : "Tell me the arrival time you need, or choose one of the presented flights.", "ai");
+        return;
+      }
+
+      const flights = await queryClient.fetchQuery(getSearchAlternativeFlightsQueryOptions({
+        origin: dashboard.booking.origin,
+        destination: dashboard.booking.destination,
+        arrivalBefore,
+      }));
+      if (flights.length > 0) {
+        setNoSuitableOptions(null);
+        setAlternativeFlights(flights);
+        const optionsText = flights.map((f, idx) =>
+          `${idx + 1}. ${f.flightNumber} departing at ${f.departure} and arriving at ${f.arrival}`
+        ).join("\n");
+        addMessage(`I found ${flights.length} alternative ${flights.length === 1 ? "flight" : "flights"} arriving before ${arrivalBefore}:\n\n${optionsText}\n\nWhich one would you prefer?`, "ai");
+        setAwaitingRequirement(false);
+        setShowingOptions(true);
+        setAwaitingConfirmationFor(null);
+      } else {
+        const available = await queryClient.fetchQuery(getSearchAlternativeFlightsQueryOptions({
+          origin: dashboard.booking.origin,
+          destination: dashboard.booking.destination,
+        }));
+        setAlternativeFlights([]);
+        setShowingOptions(false);
+        setAwaitingRequirement(true);
+        setNoSuitableOptions(arrivalBefore);
+        const actualTimes = available.length
+          ? ` Available alternatives: ${available.map(f => `${f.flightNumber} arrives at ${f.arrival}`).join("; ")}.`
+          : " No available alternatives were returned.";
+        addMessage(`There are no suitable flights arriving before ${arrivalBefore} on this route.${actualTimes} Your booking has not changed. Would you like to try a later arrival time?`, "ai");
+      }
+      await queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+    } catch {
+      addMessage("I couldn't check flight availability right now. Your booking has not changed; please try again.", "ai");
+    } finally {
+      setIsTyping(false);
     }
   };
 
@@ -235,11 +297,11 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
       </div>
 
       {/* Device Mockup */}
-      <div className="w-full max-w-[380px] h-[90%] max-h-[800px] min-h-[600px] bg-background rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] border-[12px] border-slate-900 dark:border-slate-950 relative flex flex-col overflow-hidden ring-1 ring-white/10 z-10">
+      <div className="w-full max-w-[380px] h-[min(760px,calc(100dvh-48px))] min-h-[560px] bg-background rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(12,38,58,0.3)] border-[10px] border-primary relative flex flex-col overflow-hidden ring-1 ring-border z-10">
         
         {/* Dynamic Island / Notch area */}
         <div className="absolute top-0 inset-x-0 h-6 flex justify-center z-50">
-          <div className="w-[120px] h-full bg-slate-900 dark:bg-slate-950 rounded-b-3xl"></div>
+          <div className="w-[120px] h-full bg-primary rounded-b-3xl"></div>
         </div>
 
         {/* Status Bar */}
@@ -263,12 +325,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]"></span> Verified Airline Agent
             </p>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:bg-muted" aria-label="Audio call">
-            <Phone className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:bg-muted" aria-label="More options">
-            <MoreVertical className="h-4 w-4" />
-          </Button>
+           <span className="rounded-full bg-muted px-2 py-1 font-mono text-[9px] font-bold text-muted-foreground">{dashboard.booking.bookingReference}</span>
         </div>
 
         <div
@@ -321,6 +378,13 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
             </div>
           )}
 
+          {noSuitableOptions && awaitingRequirement && (
+            <div className="mx-2 rounded-2xl border border-accent/50 bg-accent/15 p-4" data-testid="status-no-suitable-options">
+              <p className="text-xs font-bold text-foreground">No suitable options before {noSuitableOptions}</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">No flight was selected and your booking is unchanged. Try a later arrival time below.</p>
+            </div>
+          )}
+
           {messages.map((msg, i) => {
             const isPassenger = msg.sender === 'passenger';
             return (
@@ -367,11 +431,11 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
           <div className="flex flex-col gap-2 w-full relative">
             {awaitingRequirement && (
               <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 px-1 w-full snap-x absolute -top-14 left-0 right-0">
-                <Button variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold rounded-full shrink-0 snap-center bg-card shadow-sm border-primary/20 text-primary hover:bg-primary/5 transition-transform active:scale-95" onClick={() => handleSend("I need to arrive before 18:00")} data-testid="btn-reply-1800">
-                  Arrive before 18:00
-                </Button>
-                <Button variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold rounded-full shrink-0 snap-center bg-card shadow-sm border-primary/20 text-primary hover:bg-primary/5 transition-transform active:scale-95" onClick={() => handleSend("Get me there by 20:00")} data-testid="btn-reply-2000">
-                  Arrive before 20:00
+                 {suggestedTime && <Button variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold rounded-full shrink-0 snap-center bg-card shadow-sm border-primary/20 text-primary hover:bg-primary/5 transition-transform active:scale-95" onClick={() => handleSend(suggestedRequirement)} data-testid="btn-reply-suggested">
+                    Arrive before {suggestedTime}
+                 </Button>}
+                 <Button variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold rounded-full shrink-0 snap-center bg-card shadow-sm border-primary/20 text-primary hover:bg-primary/5 transition-transform active:scale-95" onClick={() => handleSend("I need to arrive before 20:00")} data-testid="btn-reply-2000">
+                   Arrive before 20:00
                 </Button>
               </div>
             )}
@@ -430,7 +494,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
                   handleSend();
                 }
               }}
-              placeholder={awaitingRequirement ? "Type 'I need to arrive before 18:00'..." : "Message SurgeAir..."}
+               placeholder={awaitingRequirement ? "What time do you need to arrive?" : "Message SurgeAir..."}
               className="pr-12 rounded-full bg-muted border-border/50 focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-transparent h-11 text-[13px] font-medium placeholder:text-muted-foreground/60 shadow-sm"
               disabled={isTyping}
               data-testid="input-chat"

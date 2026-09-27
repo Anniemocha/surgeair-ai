@@ -33,6 +33,61 @@ export interface Booking {
   status?: string;
 }
 
+export interface PassengerScenario {
+  bookingReference: string;
+  passengerName: string;
+  travelers: number;
+  origin: string;
+  destination: string;
+  originalFlight: Flight;
+  disruptionReason: string;
+  scenarioType: string;
+  suggestedRequirement: string;
+  revisedDeparture?: string;
+  revisedArrival?: string;
+  terminal?: string;
+}
+
+export interface PassengerSelection {
+  bookingReference: string;
+}
+
+export interface MessageInterpretationInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  text: string;
+  bookingReference: string;
+  /**
+     * @maxItems 20
+     * @items.pattern ^[Ss][Aa][0-9]{3}$
+     */
+  presentedFlightNumbers?: string[];
+}
+
+export type MessageInterpretationProvider = typeof MessageInterpretationProvider[keyof typeof MessageInterpretationProvider];
+
+
+export const MessageInterpretationProvider = {
+  local: 'local',
+  'amazon-bedrock': 'amazon-bedrock',
+} as const;
+
+export interface MessageInterpretation {
+  intent: string;
+  /**
+     * @nullable
+     * @pattern ^(?:[01][0-9]|2[0-3]):[0-5][0-9]$
+     */
+  arrivalBefore: string | null;
+  /** @nullable */
+  selectedFlight: string | null;
+  provider: MessageInterpretationProvider;
+  /** @nullable */
+  clarification: string | null;
+}
+
 export interface Activity {
   id: string;
   label: string;

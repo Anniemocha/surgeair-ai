@@ -47,6 +47,16 @@ function airportCity(code: string) {
   const cities: Record<string, string> = {
     LIS: "Lisbon",
     EDI: "Edinburgh",
+    LHR: "London Heathrow",
+    LGW: "London Gatwick",
+    JFK: "New York",
+    CDG: "Paris",
+    AMS: "Amsterdam",
+    FRA: "Frankfurt",
+    MAD: "Madrid",
+    DUB: "Dublin",
+    BCN: "Barcelona",
+    FCO: "Rome",
   };
   return cities[code] ?? code;
 }
@@ -104,9 +114,9 @@ export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps)
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       {/* Top navbar */}
-      <header className="h-14 border-b border-border bg-card px-6 hidden lg:flex items-center justify-between shrink-0 shadow-sm z-10">
+      <header className="min-h-20 border-b border-border bg-card px-6 hidden lg:flex items-center justify-between shrink-0 shadow-sm z-10">
         <div className="flex flex-col">
-          <div className="flex items-center gap-2 text-primary font-bold tracking-tight text-lg">
+           <div className="surge-heading flex items-center gap-2 text-primary font-bold tracking-tight text-xl">
             <Plane className="h-5 w-5" />
             <span>SurgeAir AI</span>
           </div>
@@ -116,7 +126,7 @@ export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps)
         </div>
         <div className="flex items-center gap-3">
           {headerAction}
-          <Badge variant={actionStatus === 'COMPLETED' ? 'default' : 'secondary'} className="uppercase text-[10px] font-bold tracking-wider" data-testid="badge-action-status">
+          <Badge variant={actionStatus === 'Rebooked' ? 'default' : 'secondary'} className="uppercase text-[10px] font-bold tracking-wider" data-testid="badge-action-status">
             {actionStatus}
           </Badge>
         </div>
@@ -124,10 +134,16 @@ export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps)
 
       <ScrollArea className="flex-1 p-6">
         <div className="max-w-3xl mx-auto space-y-6 pb-12">
+          <div className="surge-rail relative overflow-hidden rounded-3xl border border-border px-6 py-6 sm:px-8">
+            <div className="surge-flightline pointer-events-none absolute inset-y-0 right-0 w-1/3 opacity-50" />
+            <p className="surge-kicker relative text-[10px] font-bold text-primary">Operations / Active journey</p>
+            <h1 className="surge-heading relative mt-2 text-3xl font-bold leading-tight text-foreground sm:text-4xl">A clearer way forward.</h1>
+            <p className="relative mt-2 text-sm text-muted-foreground">Follow the disruption, conversation, and next steps for <strong className="text-foreground">{booking.passengerName}</strong>.</p>
+          </div>
           
           {/* Passenger Context */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="shadow-sm border-0 bg-primary text-primary-foreground">
+             <Card className="surge-surface border-0 bg-primary text-primary-foreground">
               <CardContent className="p-5 flex flex-col justify-between h-full">
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
@@ -147,25 +163,25 @@ export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps)
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm border-0 bg-destructive/10 border-l-4 border-l-destructive">
+             <Card className="surge-surface border border-destructive/20 bg-destructive/10 border-l-4 border-l-destructive">
               <CardContent className="p-5 flex flex-col justify-between h-full">
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
                     <p className="text-[10px] uppercase tracking-widest text-destructive/80 font-bold">Current Disruption</p>
-                    <div className="text-xl font-bold tracking-tight text-destructive" data-testid="text-disruption-flight">{disruption.flightNumber} Delayed</div>
+                     <div className="text-xl font-bold tracking-tight text-destructive" data-testid="text-disruption-flight">{disruption.flightNumber} {disruption.status}</div>
                   </div>
                   <AlertCircle className="h-5 w-5 text-destructive/50" />
                 </div>
                 <div className="mt-4 pt-4 border-t border-destructive/10 flex items-center gap-2">
                   <Clock className="h-3.5 w-3.5 text-destructive/80" />
-                  <span className="text-sm font-bold text-destructive/90" data-testid="text-delay-minutes">{disruption.delayMinutes} min delay</span>
+                   <span className="text-sm font-bold text-destructive/90" data-testid="text-delay-minutes">{disruption.delayMinutes > 0 ? `${disruption.delayMinutes} min delay` : disruption.status}</span>
                 </div>
               </CardContent>
             </Card>
           </div>
 
           {/* Current Itinerary */}
-          <Card className="shadow-sm border-0 bg-card overflow-hidden">
+             <Card className="surge-surface border border-border/70 bg-card overflow-hidden">
             <div className="h-1 bg-gradient-to-r from-primary via-secondary to-primary" />
             <CardHeader className="pb-2 pt-4">
               <CardTitle className="text-xs font-semibold flex items-center justify-between uppercase tracking-wide text-muted-foreground">
@@ -226,7 +242,7 @@ export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps)
                       {selectedAlternative} selected — awaiting confirmation
                     </div>
                     <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200/80">
-                      SG4821 remains booked on {booking.currentFlight.flightNumber} until the passenger confirms.
+                       {booking.bookingReference} remains booked on {booking.currentFlight.flightNumber} until the passenger confirms.
                     </p>
                   </div>
                 )}
@@ -356,11 +372,15 @@ export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps)
                        <span className={`text-[9px] uppercase tracking-wider font-bold pl-5 ${style.text}`}>
                          {integration.status}
                       </span>
-                      {integration.detail && (
-                        <span className="text-[10px] text-muted-foreground pl-5 truncate" title={integration.detail}>
-                          {integration.detail}
-                        </span>
-                      )}
+                       {integration.service === "AWS End User Messaging SMS" ? (
+                         <span className="pl-5 text-[10px] leading-tight text-muted-foreground" title={integration.detail ?? undefined}>
+                           AWS SMS Simulator
+                         </span>
+                       ) : integration.detail ? (
+                         <span className="text-[10px] text-muted-foreground pl-5 truncate" title={integration.detail}>
+                           {integration.detail}
+                         </span>
+                       ) : null}
                     </div>
                   );
                 })}

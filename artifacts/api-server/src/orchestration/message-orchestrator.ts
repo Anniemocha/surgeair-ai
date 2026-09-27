@@ -5,6 +5,7 @@ import type {
 import type { ConversationRepository } from "../conversation/conversation-repository";
 import type { EventStore } from "../events/event-store";
 import type { ModelProvider } from "../models/model-provider";
+import type { PassengerContext, PassengerInterpretation } from "../models/model-provider";
 import type { OperationalLogger } from "../observability/operational-logger";
 
 export class MessageOrchestrator {
@@ -92,6 +93,13 @@ export class MessageOrchestrator {
       confirmationRequired: interpretation.requiresConfirmation,
     });
     return interpretation;
+  }
+
+  async interpret(
+    content: string,
+    context: PassengerContext,
+  ): Promise<PassengerInterpretation> {
+    return this.model.interpretPassengerRequest(content, context);
   }
 
   async send(message: NormalizedMessage) {

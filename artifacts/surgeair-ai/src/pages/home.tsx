@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useGetDashboard,
+  getDashboard,
   useResetDemo,
+  useSelectPassenger,
   getGetDashboardQueryKey,
   getGetBookingQueryKey,
   getGetFlightStatusQueryKey,
@@ -9,6 +11,8 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { DashboardPanel } from "@/components/dashboard/dashboard-panel";
 import { SimulatorPanel } from "@/components/simulator/simulator-panel";
+import { PassengerExplorer } from "@/components/passenger-explorer";
+import { ThemeSelector, type Theme } from "@/components/theme-selector";
 import { Loader2, Plane, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -96,27 +100,54 @@ function ResetDemoControl({
 export function Home() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const saved = localStorage.getItem("surgeair-theme");
+      return saved === "dark" || saved === "eye-care" ? saved : "light";
+    } catch { return "light"; }
+  });
   const [resetVersion, setResetVersion] = useState(0);
-  const { data: dashboard, isLoading, error } = useGetDashboard();
+  const [switching, setSwitching] = useState(false);
+  const { data: dashboard, isLoading, error, refetch } = useGetDashboard();
   const resetDemo = useResetDemo();
+  const selectPassenger = useSelectPassenger();
+
+  useEffect(() => {
+    document.documentElement.classList.remove("light", "dark", "eye-care");
+    document.documentElement.classList.add(theme);
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem("surgeair-theme", theme); } catch { /* storage can be unavailable */ }
+  }, [theme]);
+
+  const refreshScenario = async () => {
+    // Fetch the new session first; refetching the previous booking after the switch yields a 404.
+    const next = await getDashboard();
+    queryClient.removeQueries({ queryKey: getGetBookingQueryKey(next.booking.bookingReference) });
+    queryClient.removeQueries({ queryKey: getGetFlightStatusQueryKey(next.disruption.flightNumber) });
+    queryClient.setQueryData(getGetDashboardQueryKey(), next);
+    setResetVersion(version => version + 1);
+  };
+
+  const handleSelect = async (bookingReference: string) => {
+    setSwitching(true);
+    try {
+      await selectPassenger.mutateAsync({ data: { bookingReference } });
+      await refreshScenario();
+      toast({ title: `Now exploring ${bookingReference}`, description: "A fresh scenario is ready. No message or rebooking was sent." });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Could not switch passenger", description: "Check the reference and try again." });
+      throw e;
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   const handleReset = async () => {
     if (!dashboard) return;
 
     try {
       await resetDemo.mutateAsync();
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
-        queryClient.invalidateQueries({
-          queryKey: getGetBookingQueryKey(dashboard.booking.bookingReference),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getGetFlightStatusQueryKey(
-            dashboard.disruption.flightNumber,
-          ),
-        }),
-      ]);
-      setResetVersion((version) => version + 1);
+      await refreshScenario();
       toast({
         title: "Demo reset. SG4821 is back on delayed flight SA204.",
       });
@@ -133,10 +164,10 @@ export function Home() {
   
   if (isLoading) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4 text-primary">
-          <Loader2 className="h-10 w-10 animate-spin" />
-          <p className="text-sm font-medium tracking-wide animate-pulse">LOADING AIRLINE SYSTEMS...</p>
+      <div className="min-h-[100dvh] w-full bg-background p-6">
+        <div className="mx-auto max-w-6xl space-y-8 pt-12">
+          <div className="h-9 w-52 animate-pulse rounded-xl bg-muted" />
+          <div className="grid gap-8 lg:grid-cols-2"><div className="h-96 animate-pulse rounded-3xl bg-muted" /><div className="h-96 animate-pulse rounded-3xl bg-muted" /></div>
         </div>
       </div>
     );
@@ -147,6 +178,8 @@ export function Home() {
       <div className="min-h-screen w-full flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
           <p className="text-destructive font-medium">Failed to load operations dashboard.</p>
+          <Button onClick={() => void refetch()} data-testid="btn-retry-dashboard">Try again</Button>
+          <ThemeSelector theme={theme} onChange={setTheme} />
         </div>
       </div>
     );
@@ -154,7 +187,7 @@ export function Home() {
 
   return (
     <div className="min-h-[100dvh] w-full flex flex-col lg:flex-row bg-background">
-      <header className="order-0 flex min-h-16 items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 shadow-sm lg:hidden">
+      <header className="order-0 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 shadow-sm lg:hidden">
         <div className="min-w-0">
           <div className="flex items-center gap-2 font-bold tracking-tight text-primary">
             <Plane className="h-5 w-5 shrink-0" />
@@ -165,13 +198,15 @@ export function Home() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <PassengerExplorer activeReference={dashboard.booking.bookingReference} pending={selectPassenger.isPending} onSelect={handleSelect} />
+          <ThemeSelector theme={theme} onChange={setTheme} />
           <ResetDemoControl
             isResetting={resetDemo.isPending}
             onReset={handleReset}
           />
           <Badge
             variant={
-              dashboard.actionStatus === "COMPLETED"
+              dashboard.actionStatus === "Rebooked"
                 ? "default"
                 : "secondary"
             }
@@ -187,18 +222,25 @@ export function Home() {
       <div className="order-2 w-full lg:order-1 lg:w-1/2 xl:w-[55%] min-h-[50dvh] lg:h-[100dvh] border-b lg:border-b-0 lg:border-r border-border overflow-hidden flex flex-col bg-background">
         <DashboardPanel
           dashboard={dashboard}
-          headerAction={
+          headerAction={<>
+            <PassengerExplorer activeReference={dashboard.booking.bookingReference} pending={selectPassenger.isPending} onSelect={handleSelect} />
+            <ThemeSelector theme={theme} onChange={setTheme} />
             <ResetDemoControl
               isResetting={resetDemo.isPending}
               onReset={handleReset}
             />
-          }
+          </>}
         />
       </div>
 
       {/* Right side: Passenger Device Simulator */}
       <div className="order-1 w-full lg:order-2 lg:w-1/2 xl:w-[45%] min-h-[70dvh] lg:h-[100dvh] overflow-hidden flex flex-col relative bg-muted/30">
-        <SimulatorPanel key={resetVersion} dashboard={dashboard} />
+        <SimulatorPanel key={`${dashboard.booking.bookingReference}-${resetVersion}`} dashboard={dashboard} />
+        {switching && <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/90 backdrop-blur-sm" data-testid="status-switching-passenger">
+          <div className="h-6 w-40 animate-pulse rounded-lg bg-muted" />
+          <div className="h-52 w-72 animate-pulse rounded-[2rem] bg-muted" />
+          <p className="surge-kicker text-[10px] font-bold text-primary">Opening journey</p>
+        </div>}
       </div>
     </div>
   );

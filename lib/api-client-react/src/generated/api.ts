@@ -27,6 +27,10 @@ import type {
   HealthStatus,
   ItineraryInput,
   ItineraryResult,
+  MessageInterpretation,
+  MessageInterpretationInput,
+  PassengerScenario,
+  PassengerSelection,
   PendingRebookingResult,
   PrepareRebookingInput,
   RebookInput,
@@ -218,6 +222,260 @@ export function useGetDashboard<TData = Awaited<ReturnType<typeof getDashboard>>
 
 
 
+
+export const getListPassengersUrl = () => {
+
+
+
+
+  return `/api/passengers`
+}
+
+/**
+ * @summary List fictional passenger scenarios
+ */
+export const listPassengers = async ( options?: Parameters<typeof customFetch>[1]): Promise<PassengerScenario[]> => {
+
+  return customFetch<PassengerScenario[]>(getListPassengersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPassengersQueryKey = () => {
+    return [
+    `/api/passengers`
+    ] as const;
+    }
+
+
+export const getListPassengersQueryOptions = <TData = Awaited<ReturnType<typeof listPassengers>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPassengers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPassengersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPassengers>>> = ({ signal }) => listPassengers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPassengers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPassengersQueryResult = NonNullable<Awaited<ReturnType<typeof listPassengers>>>
+export type ListPassengersQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List fictional passenger scenarios
+ */
+
+export function useListPassengers<TData = Awaited<ReturnType<typeof listPassengers>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPassengers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPassengersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSelectPassengerUrl = () => {
+
+
+
+
+  return `/api/passengers/select`
+}
+
+/**
+ * @summary Open a fictional scenario in the current demo session
+ */
+export const selectPassenger = async (passengerSelection: PassengerSelection, options?: Parameters<typeof customFetch>[1]): Promise<PassengerSelection> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PassengerSelection>(getSelectPassengerUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(passengerSelection)
+  }
+);}
+
+
+
+
+
+export const getSelectPassengerMutationKey = () => ['selectPassenger'] as const;
+
+export const getSelectPassengerMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof selectPassenger>>, TError,SelectPassengerMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof selectPassenger>>, TError,SelectPassengerMutationVariables, TContext> => {
+
+const mutationKey = getSelectPassengerMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof selectPassenger>>, SelectPassengerMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  selectPassenger(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SelectPassengerMutationResult = NonNullable<Awaited<ReturnType<typeof selectPassenger>>>
+    export type SelectPassengerMutationBody = BodyType<PassengerSelection>
+    export type SelectPassengerMutationError = ErrorType<void>
+    export type SelectPassengerMutationVariables = {data: BodyType<PassengerSelection>}
+
+    /**
+ * @summary Open a fictional scenario in the current demo session
+ */
+export const useSelectPassenger = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof selectPassenger>>, TError,SelectPassengerMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof selectPassenger>>,
+        TError,
+        SelectPassengerMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSelectPassengerMutationOptions(options));
+    }
+
+export const getInterpretMessageUrl = () => {
+
+
+
+
+  return `/api/messages/interpret`
+}
+
+/**
+ * Uses the active session booking for context. Presented flight numbers are only hints and are accepted only when they match available alternatives on that booking's route. This endpoint never sends outbound messages or performs rebooking.
+ * @summary Interpret passenger text without receiving a channel message or taking action
+ */
+export const interpretMessage = async (messageInterpretationInput: MessageInterpretationInput, options?: Parameters<typeof customFetch>[1]): Promise<MessageInterpretation> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MessageInterpretation>(getInterpretMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(messageInterpretationInput)
+  }
+);}
+
+
+
+
+
+export const getInterpretMessageMutationKey = () => ['interpretMessage'] as const;
+
+export const getInterpretMessageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof interpretMessage>>, TError,InterpretMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof interpretMessage>>, TError,InterpretMessageMutationVariables, TContext> => {
+
+const mutationKey = getInterpretMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof interpretMessage>>, InterpretMessageMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  interpretMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InterpretMessageMutationResult = NonNullable<Awaited<ReturnType<typeof interpretMessage>>>
+    export type InterpretMessageMutationBody = BodyType<MessageInterpretationInput>
+    export type InterpretMessageMutationError = ErrorType<void>
+    export type InterpretMessageMutationVariables = {data: BodyType<MessageInterpretationInput>}
+
+    /**
+ * @summary Interpret passenger text without receiving a channel message or taking action
+ */
+export const useInterpretMessage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof interpretMessage>>, TError,InterpretMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof interpretMessage>>,
+        TError,
+        InterpretMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getInterpretMessageMutationOptions(options));
+    }
 
 export const getResetDemoUrl = () => {
 

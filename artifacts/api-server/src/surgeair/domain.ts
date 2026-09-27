@@ -502,8 +502,15 @@ const store = {
     return { bookingReference: next.bookingReference };
   },
 
+  selectConversationChannel(channel: Exclude<Channel, "Email">) {
+    const stored = conversationRepository.transitionChannel(conversationId, channel);
+    conversation.currentChannel = stored.currentChannel;
+    conversation.previousChannel = stored.previousChannel;
+    return { currentChannel: stored.currentChannel };
+  },
+
   async recordPassengerMessage(channel: Channel, content: string) {
-    return messageOrchestrator.receive({
+    const result = await messageOrchestrator.receive({
       messageId: `inbound-${Date.now()}`,
       conversationId,
       passengerId: booking.passengerId,
@@ -513,6 +520,10 @@ const store = {
       content,
       timestamp: new Date().toISOString(),
     });
+    const stored = conversationRepository.get(conversationId)!;
+    conversation.currentChannel = stored.currentChannel;
+    conversation.previousChannel = stored.previousChannel;
+    return result;
   },
 
   async interpretMessage(
@@ -632,12 +643,10 @@ const store = {
     conversation.alternativeFlights = matches.map(
       (flight) => flight.flightNumber,
     );
-    conversation.previousChannel = conversation.currentChannel;
-    conversation.currentChannel = "WhatsApp";
-    appendEvent("CONSTRAINT_DETECTED", "WhatsApp", {
+    appendEvent("CONSTRAINT_DETECTED", conversation.currentChannel, {
       arrivalBefore: arrivalBefore ?? null,
     });
-    appendEvent("ALTERNATIVES_FOUND", "WhatsApp", {
+    appendEvent("ALTERNATIVES_FOUND", conversation.currentChannel, {
       flights: matches.map((flight) => flight.flightNumber).join(","),
     });
     syncConversation("searchAlternativeFlights", "Presenting alternatives");
@@ -662,14 +671,12 @@ const store = {
       return { error: "Booking or flight not found." } as const;
     }
 
-    conversation.previousChannel = conversation.currentChannel;
-    conversation.currentChannel = "RCS";
     conversation.selectedFlight = target.flightNumber;
     conversation.confirmationStatus = "Awaiting passenger confirmation";
-    appendEvent("ALTERNATIVE_SELECTED", "RCS", {
+    appendEvent("ALTERNATIVE_SELECTED", conversation.currentChannel, {
       flightNumber: target.flightNumber,
     });
-    appendEvent("CONFIRMATION_REQUESTED", "RCS", {
+    appendEvent("CONFIRMATION_REQUESTED", conversation.currentChannel, {
       bookingReference: reference,
     });
     addActivityOnce("Alternative selected", target.flightNumber);
@@ -730,22 +737,20 @@ const store = {
     const previousFlight = booking.currentFlight.flightNumber;
     booking.currentFlight = target;
     booking.status = "Rebooked";
-    conversation.previousChannel = conversation.currentChannel;
-    conversation.currentChannel = "RCS";
     conversation.selectedFlight = target.flightNumber;
     conversation.confirmationStatus = "Confirmed";
     conversation.rebookingStatus = "Rebooked";
     conversation.currentFlight = target.flightNumber;
-    appendEvent("ALTERNATIVE_SELECTED", "RCS", {
+    appendEvent("ALTERNATIVE_SELECTED", conversation.currentChannel, {
       flightNumber: target.flightNumber,
     });
-    appendEvent("CONFIRMATION_RECEIVED", "RCS", {
+    appendEvent("CONFIRMATION_RECEIVED", conversation.currentChannel, {
       confirmationReceived: true,
     });
-    appendEvent("REBOOKING_STARTED", "RCS", {
+    appendEvent("REBOOKING_STARTED", conversation.currentChannel, {
       bookingReference: reference,
     });
-    appendEvent("REBOOKING_COMPLETED", "RCS", {
+    appendEvent("REBOOKING_COMPLETED", conversation.currentChannel, {
       previousFlight,
       currentFlight: target.flightNumber,
     });
@@ -755,7 +760,7 @@ const store = {
       currentFlight: target.flightNumber,
     });
     addMessage(
-      "RCS",
+      conversation.currentChannel,
       booking.passengerName,
       `Yes, confirm rebooking to ${target.flightNumber}.`,
     );
@@ -825,8 +830,6 @@ const store = {
   },
 
   markItinerarySent(channel: Channel, liveEmail = false) {
-    conversation.previousChannel = conversation.currentChannel;
-    conversation.currentChannel = channel;
     addActivity(
       "Updated itinerary generated",
       `Itinerary for ${booking.currentFlight.flightNumber}`,

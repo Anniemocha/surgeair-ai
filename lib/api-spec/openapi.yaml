@@ -69,6 +69,27 @@ paths:
               schema: { $ref: "#/components/schemas/PassengerSelection" }
         "404":
           description: Booking not found
+  /channels/select:
+    post:
+      operationId: selectConversationChannel
+      tags: [surgeair]
+      summary: Intentionally switch the simulated conversation channel in this demo session
+      description: Changes only the chat channel; does not send a message or run an airline tool.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConversationChannelSelection" }
+      responses:
+        "200":
+          description: Selected chat channel
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversationChannelState" }
+        "400":
+          description: Invalid chat channel
+        "403":
+          description: Cross-site selection requests are rejected
   /messages/interpret:
     post:
       operationId: interpretMessage
@@ -350,6 +371,16 @@ components:
       required: [bookingReference]
       properties:
         bookingReference: { type: string }
+    ConversationChannelSelection:
+      type: object
+      required: [channel]
+      properties:
+        channel: { type: string, enum: [SMS, WhatsApp, RCS] }
+    ConversationChannelState:
+      type: object
+      required: [currentChannel]
+      properties:
+        currentChannel: { type: string, enum: [SMS, WhatsApp, RCS] }
     MessageInterpretationInput:
       type: object
       required: [text, bookingReference]

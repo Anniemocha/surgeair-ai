@@ -52,6 +52,32 @@ export interface PassengerSelection {
   bookingReference: string;
 }
 
+export type ConversationChannelSelectionChannel = typeof ConversationChannelSelectionChannel[keyof typeof ConversationChannelSelectionChannel];
+
+
+export const ConversationChannelSelectionChannel = {
+  SMS: 'SMS',
+  WhatsApp: 'WhatsApp',
+  RCS: 'RCS',
+} as const;
+
+export interface ConversationChannelSelection {
+  channel: ConversationChannelSelectionChannel;
+}
+
+export type ConversationChannelStateCurrentChannel = typeof ConversationChannelStateCurrentChannel[keyof typeof ConversationChannelStateCurrentChannel];
+
+
+export const ConversationChannelStateCurrentChannel = {
+  SMS: 'SMS',
+  WhatsApp: 'WhatsApp',
+  RCS: 'RCS',
+} as const;
+
+export interface ConversationChannelState {
+  currentChannel: ConversationChannelStateCurrentChannel;
+}
+
 export interface MessageInterpretationInput {
   /**
      * @minLength 1

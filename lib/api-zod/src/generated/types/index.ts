@@ -8,6 +8,10 @@
 
 export * from './activity';
 export * from './booking';
+export * from './conversationChannelSelection';
+export * from './conversationChannelSelectionChannel';
+export * from './conversationChannelState';
+export * from './conversationChannelStateCurrentChannel';
 export * from './conversationMessage';
 export * from './dashboard';
 export * from './demoResetResult';

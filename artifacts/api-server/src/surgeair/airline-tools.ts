@@ -58,17 +58,8 @@ registry.register({
   description:
     "Search available flights by route and optional arrival-before constraint.",
   inputSchema: SearchAlternativeFlightsQueryParams,
-  execute: async ({ origin, destination, arrivalBefore }) => {
-    await store.recordPassengerMessage(
-      "WhatsApp",
-      `I need to arrive before ${arrivalBefore ?? "the requested time"}.`,
-    );
-    return store.searchAlternatives(
-      origin,
-      destination,
-      arrivalBefore,
-    );
-  },
+  execute: ({ origin, destination, arrivalBefore }) =>
+    store.searchAlternatives(origin, destination, arrivalBefore),
 });
 
 registry.register({
@@ -76,13 +67,8 @@ registry.register({
   description:
     "Record a selected alternative without changing the booking and request explicit confirmation.",
   inputSchema: PrepareRebookingBody,
-  execute: async ({ bookingReference, newFlight }) => {
-    await store.recordPassengerMessage(
-      "RCS",
-      `Take ${newFlight.toUpperCase()}.`,
-    );
-    return store.prepareRebooking(bookingReference, newFlight);
-  },
+  execute: ({ bookingReference, newFlight }) =>
+    store.prepareRebooking(bookingReference, newFlight),
 });
 
 registry.register({
@@ -90,16 +76,8 @@ registry.register({
   description:
     "Change a booking to a selected alternative only after explicit confirmation.",
   inputSchema: RebookFlightBody,
-  execute: async ({ bookingReference, newFlight, confirmation }) => {
-    if (confirmation) {
-      await store.recordPassengerMessage("RCS", "Yes, confirm.");
-    }
-    return store.rebook(
-      bookingReference,
-      newFlight,
-      confirmation,
-    );
-  },
+  execute: ({ bookingReference, newFlight, confirmation }) =>
+    store.rebook(bookingReference, newFlight, confirmation),
 });
 
 registry.register({

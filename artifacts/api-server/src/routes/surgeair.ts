@@ -8,6 +8,8 @@ import {
   InterpretMessageResponse,
   SelectPassengerBody,
   SelectPassengerResponse,
+  SelectConversationChannelBody,
+  SelectConversationChannelResponse,
   GetFlightStatusParams,
   GetFlightStatusResponse,
   PrepareRebookingBody,
@@ -70,6 +72,21 @@ router.post("/passengers/select", (req, res): void => {
     return;
   }
   res.json(SelectPassengerResponse.parse(result));
+});
+
+router.post("/channels/select", (req, res): void => {
+  if (!isSameOriginRequest(req)) {
+    res.status(403).json({ error: "Cross-site channel selection requests are not allowed." });
+    return;
+  }
+  const input = SelectConversationChannelBody.safeParse(req.body);
+  if (!input.success) {
+    res.status(400).json({ error: "Choose SMS, WhatsApp, or RCS." });
+    return;
+  }
+  res.json(SelectConversationChannelResponse.parse(
+    req.surgeAirStore.selectConversationChannel(input.data.channel),
+  ));
 });
 
 router.post("/messages/interpret", async (req, res): Promise<void> => {

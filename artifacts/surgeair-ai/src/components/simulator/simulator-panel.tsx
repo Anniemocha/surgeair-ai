@@ -11,6 +11,7 @@ import {
   useRebookFlight, 
   useSendItinerary,
   useInterpretMessage,
+   useSelectConversationChannel,
   getGetDashboardQueryKey,
   getGetBookingQueryKey
 } from "@workspace/api-client-react";
@@ -47,6 +48,11 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ConversationMessage[]>(dashboard.messages);
   const [inputValue, setInputValue] = useState("");
+  const [activeChannel, setActiveChannel] = useState(dashboard.orchestration.currentChannel);
+  const [channelError, setChannelError] = useState("");
+  useEffect(() => {
+    setActiveChannel(dashboard.orchestration.currentChannel);
+  }, [dashboard.orchestration.currentChannel]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const mounted = useRef(true);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -88,7 +94,20 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   const prepareRebooking = usePrepareRebooking();
   const sendItinerary = useSendItinerary();
   const interpretMessage = useInterpretMessage();
+  const selectConversationChannel = useSelectConversationChannel();
   const channels = ["SMS", "WhatsApp", "RCS", "Email"] as const;
+
+  const handleSelectChannel = async (channel: "SMS" | "WhatsApp" | "RCS") => {
+    if (isTyping || selectConversationChannel.isPending || activeChannel === channel) return;
+    setChannelError("");
+    try {
+      const selected = await selectConversationChannel.mutateAsync({ data: { channel } });
+      setActiveChannel(selected.currentChannel);
+      await queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+    } catch {
+      setChannelError("Could not switch channels. Please try again.");
+    }
+  };
 
   // Scroll to bottom on new message
   useEffect(() => {
@@ -101,7 +120,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   const addMessage = (text: string, sender: 'passenger' | 'ai') => {
     const newMessage: ConversationMessage = {
       id: crypto.randomUUID(),
-      channel: 'SMS',
+      channel: activeChannel as ConversationMessage["channel"],
       sender,
       text,
       timestamp: new Date().toISOString()
@@ -111,7 +130,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
 
   const handleSend = async (textOverride?: string) => {
     const textToUse = textOverride || inputValue;
-    if (!textToUse.trim() || isTyping) return;
+    if (!textToUse.trim() || isTyping || selectConversationChannel.isPending) return;
     
     const userText = textToUse.trim();
     if (!textOverride) setInputValue("");
@@ -334,31 +353,36 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
           data-testid="list-conversation-channels"
         >
           {channels.map((channel) => {
-            const active =
-              dashboard.orchestration.currentChannel.toLowerCase() ===
-              channel.toLowerCase();
+            const active = activeChannel === channel;
             const simulated = channel === "WhatsApp" || channel === "RCS";
-            return (
-              <Badge
+            const label = <>{channel}{simulated && <span className="font-normal opacity-70"> Simulated</span>}</>;
+            return channel === "Email" ? (
+              <Badge key={channel} variant="outline" className="shrink-0 text-[9px]" data-testid="badge-channel-email" title="Itinerary delivery only">
+                {label}
+              </Badge>
+            ) : (
+              <button
                 key={channel}
-                variant={active ? "default" : "outline"}
-                className="shrink-0 gap-1 text-[9px]"
+                type="button"
+                aria-pressed={active}
+                aria-label={`Use ${channel}${simulated ? " (simulated)" : ""} chat`}
+                onClick={() => void handleSelectChannel(channel)}
+                disabled={isTyping || selectConversationChannel.isPending}
+                className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-foreground hover:bg-muted"}`}
                 data-testid={`badge-channel-${channel.toLowerCase()}`}
               >
-                {channel}
-                {simulated && (
-                  <span className="font-normal opacity-70">Simulated</span>
-                )}
-              </Badge>
+                {label}
+              </button>
             );
           })}
         </div>
+        {channelError && <p role="alert" className="px-3 text-xs text-destructive">{channelError}</p>}
 
         {/* Chat Area */}
         <div className={`flex-1 overflow-y-auto p-4 space-y-5 bg-muted/20 dark:bg-background relative transition-all duration-300 ${showingOptions ? 'pb-44' : awaitingRequirement || awaitingConfirmationFor ? 'pb-20' : 'pb-4'}`} ref={scrollRef}>
           <div className="flex justify-center mb-6 mt-2">
             <Badge variant="outline" className="bg-background/80 text-[9px] uppercase tracking-widest font-bold border-border/50 text-muted-foreground backdrop-blur-sm" data-testid="badge-chat-channel">
-              {dashboard.orchestration.currentChannel} Thread
+              {activeChannel} Thread
             </Badge>
           </div>
 
@@ -496,14 +520,14 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
               }}
                placeholder={awaitingRequirement ? "What time do you need to arrive?" : "Message SurgeAir..."}
               className="pr-12 rounded-full bg-muted border-border/50 focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-transparent h-11 text-[13px] font-medium placeholder:text-muted-foreground/60 shadow-sm"
-              disabled={isTyping}
+               disabled={isTyping || selectConversationChannel.isPending}
               data-testid="input-chat"
             />
             <Button 
               size="icon" 
               className="absolute right-1.5 h-8 w-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-transform active:scale-95"
               onClick={() => void handleSend()}
-              disabled={!inputValue.trim() || isTyping}
+               disabled={!inputValue.trim() || isTyping || selectConversationChannel.isPending}
               data-testid="btn-send-message"
               aria-label="Send message"
             >

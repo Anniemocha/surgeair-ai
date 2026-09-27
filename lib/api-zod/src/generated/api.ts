@@ -133,6 +133,19 @@ export const SelectPassengerResponse = zod.object({
 
 
 /**
+ * Changes only the chat channel; does not send a message or run an airline tool.
+ * @summary Intentionally switch the simulated conversation channel in this demo session
+ */
+export const SelectConversationChannelBody = zod.object({
+  "channel": zod.enum(['SMS', 'WhatsApp', 'RCS'])
+})
+
+export const SelectConversationChannelResponse = zod.object({
+  "currentChannel": zod.enum(['SMS', 'WhatsApp', 'RCS'])
+})
+
+
+/**
  * Uses the active session booking for context. Presented flight numbers are only hints and are accepted only when they match available alternatives on that booking's route. This endpoint never sends outbound messages or performs rebooking.
  * @summary Interpret passenger text without receiving a channel message or taking action
  */

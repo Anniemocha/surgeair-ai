@@ -33,6 +33,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { wasItineraryEmailDelivered } from "./email-delivery-activity";
 import { describeAlternatives, distinctAlternatives } from "./alternatives";
+import { uniqueSuggestedReplies } from "./suggested-replies";
 
 interface SimulatorPanelProps {
   dashboard: Dashboard;
@@ -92,6 +93,12 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   ) as { suggestedRequirement?: string | null } | undefined;
   const suggestedRequirement = scenario?.suggestedRequirement?.trim() || "";
   const suggestedTime = suggestedRequirement.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/)?.[0];
+  const suggestedReplies = uniqueSuggestedReplies([
+    ...(suggestedTime
+      ? [{ label: `Arrive before ${suggestedTime}`, message: suggestedRequirement }]
+      : []),
+    { label: "Arrive before 20:00", message: "I need to arrive before 20:00" },
+  ]);
 
   const rebookFlight = useRebookFlight();
   const prepareRebooking = usePrepareRebooking();
@@ -486,12 +493,11 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
           <div className="flex flex-col gap-2 w-full relative">
             {awaitingRequirement && (
               <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 px-1 w-full snap-x absolute -top-14 left-0 right-0">
-                 {suggestedTime && <Button variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold rounded-full shrink-0 snap-center bg-card shadow-sm border-primary/20 text-primary hover:bg-primary/5 transition-transform active:scale-95" onClick={() => handleSend(suggestedRequirement)} data-testid="btn-reply-suggested">
-                    Arrive before {suggestedTime}
-                 </Button>}
-                 <Button variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold rounded-full shrink-0 snap-center bg-card shadow-sm border-primary/20 text-primary hover:bg-primary/5 transition-transform active:scale-95" onClick={() => handleSend("I need to arrive before 20:00")} data-testid="btn-reply-2000">
-                   Arrive before 20:00
-                </Button>
+                  {suggestedReplies.map((reply, index) => (
+                    <Button key={reply.label} variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold rounded-full shrink-0 snap-center bg-card shadow-sm border-primary/20 text-primary hover:bg-primary/5 transition-transform active:scale-95" onClick={() => handleSend(reply.message)} data-testid={index === 0 && suggestedTime ? "btn-reply-suggested" : "btn-reply-2000"}>
+                      {reply.label}
+                    </Button>
+                  ))}
               </div>
             )}
 

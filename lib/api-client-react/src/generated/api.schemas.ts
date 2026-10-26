@@ -130,6 +130,17 @@ export interface ConversationMessage {
   timestamp: string;
 }
 
+export interface ItineraryEmailPreview {
+  from: string;
+  to: string;
+  subject: string;
+  body: string;
+  provider: string;
+  /** @nullable */
+  messageId: string | null;
+  sentAt: string;
+}
+
 export interface OrchestrationState {
   conversationId: string;
   currentChannel: string;
@@ -162,6 +173,7 @@ export interface Dashboard {
   disruption: Flight;
   messages: ConversationMessage[];
   activities: Activity[];
+  emailPreview?: ItineraryEmailPreview;
   /** @nullable */
   selectedAlternative: string | null;
   confirmationStatus: string;
@@ -257,6 +269,7 @@ export interface ItineraryResult {
   channel: string;
   message: string;
   sentAt: string;
+  emailPreview?: ItineraryEmailPreview;
 }
 
 export type SesDeliveryResultProvider = typeof SesDeliveryResultProvider[keyof typeof SesDeliveryResultProvider];

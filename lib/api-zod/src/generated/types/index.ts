@@ -21,6 +21,7 @@ export * from './demoResetResultStatus';
 export * from './flight';
 export * from './healthStatus';
 export * from './integrationReadiness';
+export * from './itineraryEmailPreview';
 export * from './itineraryInput';
 export * from './itineraryResult';
 export * from './messageInterpretation';

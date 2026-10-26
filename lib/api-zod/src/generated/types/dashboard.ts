@@ -10,6 +10,7 @@ import type { Booking } from './booking';
 import type { ConversationMessage } from './conversationMessage';
 import type { Flight } from './flight';
 import type { IntegrationReadiness } from './integrationReadiness';
+import type { ItineraryEmailPreview } from './itineraryEmailPreview';
 import type { OrchestrationState } from './orchestrationState';
 
 export interface Dashboard {
@@ -17,6 +18,7 @@ export interface Dashboard {
   disruption: Flight;
   messages: ConversationMessage[];
   activities: Activity[];
+  emailPreview?: ItineraryEmailPreview;
   /** @nullable */
   selectedAlternative: string | null;
   confirmationStatus: string;

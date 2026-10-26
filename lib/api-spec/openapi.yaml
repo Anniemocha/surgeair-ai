@@ -437,6 +437,8 @@ components:
         activities:
           type: array
           items: { $ref: "#/components/schemas/Activity" }
+        emailPreview:
+          $ref: "#/components/schemas/ItineraryEmailPreview"
         selectedAlternative:
           type: ["string", "null"]
         confirmationStatus: { type: string }
@@ -540,6 +542,19 @@ components:
         sent: { type: boolean }
         channel: { type: string }
         message: { type: string }
+        sentAt: { type: string }
+        emailPreview:
+          $ref: "#/components/schemas/ItineraryEmailPreview"
+    ItineraryEmailPreview:
+      type: object
+      required: [from, to, subject, body, provider, messageId, sentAt]
+      properties:
+        from: { type: string }
+        to: { type: string }
+        subject: { type: string }
+        body: { type: string }
+        provider: { type: string }
+        messageId: { type: ["string", "null"] }
         sentAt: { type: string }
     SesDeliveryResult:
       type: object

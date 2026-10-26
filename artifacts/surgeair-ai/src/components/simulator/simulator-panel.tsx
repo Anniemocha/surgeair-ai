@@ -2,7 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { 
   Dashboard, 
   ConversationMessage, 
-  Flight
+  Flight,
+  Booking,
+  ItineraryEmailPreview
 } from "@workspace/api-client-react";
 import { 
   useListPassengers,
@@ -23,18 +25,18 @@ import {
   Signal, 
   Send, 
   Bot, 
-  Plane,
-  CheckCircle2
+  Plane
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { wasItineraryEmailDelivered } from "./email-delivery-activity";
 import { describeAlternatives, distinctAlternatives } from "./alternatives";
 import { uniqueSuggestedReplies } from "./suggested-replies";
 import { demoStatus, type DemoStatus } from "@/components/demo-presentation";
+import { confirmationSummary, itineraryDeliverySummary } from "./confirmation-summary";
+import { ItineraryEmail } from "./itinerary-email-preview";
 
 interface SimulatorPanelProps {
   dashboard: Dashboard;
@@ -56,6 +58,9 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
   const [inputValue, setInputValue] = useState("");
   const [activeChannel, setActiveChannel] = useState(dashboard.orchestration.currentChannel);
   const [channelError, setChannelError] = useState("");
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailPreview, setEmailPreview] = useState<ItineraryEmailPreview | undefined>(dashboard.emailPreview);
+  const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   useEffect(() => {
     setActiveChannel(dashboard.orchestration.currentChannel);
   }, [dashboard.orchestration.currentChannel]);
@@ -108,7 +113,9 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
   const interpretMessage = useInterpretMessage();
   const selectConversationChannel = useSelectConversationChannel();
   const channels = ["SMS", "WhatsApp", "RCS", "Email"] as const;
-  const emailDelivered = wasItineraryEmailDelivered(dashboard.activities);
+  const emailDelivered = wasItineraryEmailDelivered(dashboard.activities) || emailPreview?.provider === "amazon-ses";
+  const visibleBooking = confirmedBooking ?? dashboard.booking;
+  const lastAiIndex = messages.findLastIndex(message => message.sender !== "passenger");
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 1000);
@@ -127,6 +134,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
   }, [messages, showingOptions, awaitingConfirmationFor, rebookSuccess, emailDelivered, dashboard.actionStatus, onStatusChange]);
 
   const handleSelectChannel = async (channel: "SMS" | "WhatsApp" | "RCS") => {
+    setEmailOpen(false);
     if (isTyping || selectConversationChannel.isPending || activeChannel === channel) return;
     setChannelError("");
     try {
@@ -142,9 +150,16 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
   useEffect(() => {
     if (scrollRef.current) {
       const el = scrollRef.current;
-      el.scrollTop = el.scrollHeight;
+      el.scrollTop = emailOpen ? 0 : el.scrollHeight;
     }
-  }, [messages, isTyping]);
+  }, [messages, isTyping, showingOptions, alternativeFlights, awaitingConfirmationFor, awaitingRequirement, rebookSuccess, emailOpen, emailPreview]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => { el.scrollTop = emailOpen ? 0 : el.scrollHeight; });
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, [emailOpen]);
 
   const addMessage = (text: string, sender: 'passenger' | 'ai') => {
     const newMessage: ConversationMessage = {
@@ -155,6 +170,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
       timestamp: new Date().toISOString()
     };
     setMessages(prev => [...prev, newMessage]);
+    return newMessage.id;
   };
 
   const handleSend = async (textOverride?: string) => {
@@ -189,7 +205,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
     if (awaitingConfirmationFor && /^(?:yes(?:,\s*confirm)?|confirm)(?:\s+(?:the\s+)?rebooking)?[.!]?\s*$/i.test(userText)) {
         try {
           // 1. Rebook
-          await rebookFlight.mutateAsync({
+          const result = await rebookFlight.mutateAsync({
             data: {
               bookingReference: dashboard.booking.bookingReference,
               newFlight: awaitingConfirmationFor,
@@ -197,7 +213,8 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
             }
           });
 
-          addMessage(`Great! I have confirmed your new flight ${awaitingConfirmationFor}.`, 'ai');
+          setConfirmedBooking(result.booking);
+          const confirmationId = addMessage(confirmationSummary(result.booking), 'ai');
            setAwaitingConfirmationFor(null);
            setShowingOptions(false);
            setRebookSuccess(true);
@@ -207,8 +224,11 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
              if (!mounted.current) return;
             setIsTyping(true);
              try {
-               await sendItinerary.mutateAsync({ data: { bookingReference: dashboard.booking.bookingReference, channel: 'EMAIL' } });
-               addMessage("I've also sent the updated itinerary to your email. Safe travels!", 'ai');
+               const sent = await sendItinerary.mutateAsync({ data: { bookingReference: dashboard.booking.bookingReference, channel: 'EMAIL' } });
+               setEmailPreview(sent.emailPreview);
+               setMessages(previous => previous.map(message => message.id === confirmationId
+                 ? { ...message, text: `${confirmationSummary(result.booking)} ${itineraryDeliverySummary(sent)}`, timestamp: new Date().toISOString() }
+                 : message));
              } catch {
                addMessage("Your flight is confirmed, but the itinerary email could not be sent. Please contact support for a copy.", "ai");
              } finally {
@@ -402,26 +422,27 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
         </div>
 
         <div
-          className="flex items-center gap-1.5 overflow-x-auto border-b border-border/50 bg-background px-3 py-2"
+          className="grid shrink-0 grid-cols-4 gap-1 overflow-hidden border-b border-border/50 bg-background px-2 py-2"
           aria-label="Available conversation channels"
           data-testid="list-conversation-channels"
         >
           {channels.map((channel) => {
-            const active = activeChannel === channel;
+            const active = emailOpen ? channel === "Email" : activeChannel === channel;
             const simulated = channel === "WhatsApp" || channel === "RCS";
-            const label = <>{channel}{simulated && <span className="font-normal opacity-70"> Simulated</span>}</>;
+            const label = <>{channel}{simulated && <span className="block text-[7px] font-normal opacity-70">Simulated</span>}</>;
             return channel === "Email" ? (
-              <Badge
+              <button
                 key={channel}
-                variant="outline"
-                className={`shrink-0 gap-1 text-[9px] ${emailDelivered ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300" : ""}`}
+                type="button"
+                onClick={() => setEmailOpen(true)}
+                aria-pressed={active}
+                className={`min-w-0 rounded-full border px-1 py-1 text-[9px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "border-primary bg-primary text-primary-foreground" : emailDelivered ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300" : "border-border bg-background text-foreground"}`}
                 data-testid="badge-channel-email"
                 aria-label={emailDelivered ? "Email itinerary sent via Amazon SES" : "Email itinerary delivery"}
                 title={emailDelivered ? "Itinerary delivered via Amazon SES" : "Itinerary delivery only"}
               >
-                {emailDelivered && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
-                Email{emailDelivered && <span className="font-semibold">Sent</span>}
-              </Badge>
+                Email{emailDelivered && <span className="block text-[7px] font-semibold">Sent</span>}
+              </button>
             ) : (
               <button
                 key={channel}
@@ -430,7 +451,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
                 aria-label={`Use ${channel}${simulated ? " (simulated)" : ""} chat`}
                 onClick={() => void handleSelectChannel(channel)}
                 disabled={isTyping || selectConversationChannel.isPending}
-                className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-foreground hover:bg-muted"}`}
+                className={`min-w-0 rounded-full border px-1 py-1 text-[9px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-foreground hover:bg-muted"}`}
                 data-testid={`badge-channel-${channel.toLowerCase()}`}
               >
                 {label}
@@ -441,7 +462,9 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
         {channelError && <p role="alert" className="px-3 text-xs text-destructive">{channelError}</p>}
 
         {/* Chat Area */}
-        <div className={`flex-1 overflow-y-auto p-4 space-y-5 bg-muted/20 dark:bg-background relative transition-all duration-300 ${showingOptions ? 'pb-44' : awaitingRequirement || awaitingConfirmationFor ? 'pb-20' : 'pb-4'}`} ref={scrollRef}>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 bg-muted/20 dark:bg-background relative" ref={scrollRef} data-testid="chat-scroll">
+          <div className="space-y-5">
+          {emailOpen ? <ItineraryEmail preview={emailPreview ?? dashboard.emailPreview} previouslyDelivered={emailDelivered} /> : <>
           <div className="flex justify-center mb-6 mt-2">
             <Badge variant="outline" className="bg-background/80 text-[9px] uppercase tracking-widest font-bold border-border/50 text-muted-foreground backdrop-blur-sm" data-testid="badge-chat-channel">
               {activeChannel} Thread
@@ -456,9 +479,9 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
               <div>
                 <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Rebooking Confirmed</p>
                 <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5 font-medium">
-                  {dashboard.booking.bookingReference} is now booked on{" "}
-                  {dashboard.booking.currentFlight.flightNumber},{" "}
-                  {dashboard.booking.currentFlight.departure}–{dashboard.booking.currentFlight.arrival}.
+                  {visibleBooking.bookingReference} is now booked on{" "}
+                  {visibleBooking.currentFlight.flightNumber},{" "}
+                  {visibleBooking.currentFlight.departure}–{visibleBooking.currentFlight.arrival}.
                 </p>
               </div>
             </div>
@@ -492,6 +515,12 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
                 <span className={`text-[9px] text-muted-foreground font-semibold mt-1 px-8 ${isPassenger ? 'text-right' : 'text-left'}`}>
                   {displayTime(msg.timestamp)}
                 </span>
+                {!isPassenger && i === lastAiIndex && activeChannel === "SMS" && (
+                  <details className="mt-1 max-w-full px-8 text-[9px] leading-relaxed text-muted-foreground" data-testid="sms-delivery-detail">
+                    <summary className="cursor-pointer">SMS simulator delivery details</summary>
+                    <p>AWS End User Messaging SMS simulator. No provider delivery receipt or message ID was returned for this demo message.</p>
+                  </details>
+                )}
               </div>
             );
           })}
@@ -508,15 +537,10 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
               </div>
             </div>
           )}
-        </div>
-
-        {/* Input Area */}
-        <div className="p-3 bg-background/95 backdrop-blur-md border-t border-border/50 pb-8 flex flex-col gap-3 z-40 relative">
-
           {/* Quick Replies & Rich Actions */}
-          <div className="flex flex-col gap-2 w-full relative">
-            {awaitingRequirement && (
-              <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 px-1 w-full snap-x absolute -top-14 left-0 right-0">
+          <div className="flex flex-col gap-2 w-full">
+            {awaitingRequirement && !rebookSuccess && (
+              <div className="flex flex-wrap gap-2 pb-1 w-full">
                   {suggestedReplies.map((reply, index) => (
                     <Button key={reply.label} variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold rounded-full shrink-0 snap-center bg-card shadow-sm border-primary/20 text-primary hover:bg-primary/5 transition-transform active:scale-95" onClick={() => handleSend(reply.message)} data-testid={index === 0 && suggestedTime ? "btn-reply-suggested" : "btn-reply-2000"}>
                       {reply.label}
@@ -525,10 +549,10 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
               </div>
             )}
 
-            {showingOptions && alternativeFlights.length > 0 && (
-              <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 px-1 w-full snap-x absolute -top-40 left-0 right-0">
+            {showingOptions && !awaitingConfirmationFor && !rebookSuccess && alternativeFlights.length > 0 && (
+              <div className="flex flex-col gap-3 pb-2 w-full">
                 {alternativeFlights.map(f => (
-                  <div key={f.flightNumber} className="shrink-0 w-[240px] snap-center bg-card border border-primary/10 rounded-[1.25rem] p-3 shadow-md flex flex-col gap-3 transition-transform hover:-translate-y-1" data-testid={`card-flight-option-${f.flightNumber}`}>
+                  <div key={f.flightNumber} className="w-full min-w-0 bg-card border border-primary/10 rounded-[1.25rem] p-3 shadow-md flex flex-col gap-3" data-testid={`card-flight-option-${f.flightNumber}`}>
                     <div className="flex items-center justify-between">
                       <div className="text-[13px] font-bold text-primary flex items-center gap-1.5">
                         <Plane className="h-3.5 w-3.5" />
@@ -549,7 +573,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
                         <span className="text-[10px] text-muted-foreground uppercase font-semibold">{f.destination}</span>
                       </div>
                     </div>
-                    <Button size="sm" className="w-full h-8 text-[11px] font-bold mt-1 rounded-xl transition-transform active:scale-95 bg-primary/10 text-primary hover:bg-primary hover:text-white" onClick={() => handleSend(`Book me on ${f.flightNumber}`)} data-testid={`btn-select-flight-${f.flightNumber}`}>
+                    <Button size="sm" disabled={isTyping || selectConversationChannel.isPending} className="w-full h-8 text-[11px] font-bold mt-1 rounded-xl transition-transform active:scale-95 bg-primary/10 text-primary hover:bg-primary hover:text-white" onClick={() => handleSend(`Book me on ${f.flightNumber}`)} data-testid={`btn-select-flight-${f.flightNumber}`}>
                       Select Flight
                     </Button>
                   </div>
@@ -557,8 +581,8 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
               </div>
             )}
 
-            {awaitingConfirmationFor && (
-              <div className="flex gap-2 pb-1 px-1 w-full absolute -top-14 left-0 right-0">
+            {awaitingConfirmationFor && !rebookSuccess && (
+              <div className="flex flex-wrap gap-2 pb-1 w-full">
                 <Button variant="default" size="sm" className="h-9 text-[11px] font-bold uppercase tracking-wide rounded-full flex-1 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-transform active:scale-95" onClick={() => handleSend("Yes, confirm")} data-testid="btn-confirm-rebook">
                   Yes, confirm
                 </Button>
@@ -568,7 +592,18 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
               </div>
             )}
           </div>
+          </>}
+          </div>
+        </div>
 
+        {rebookSuccess && (emailPreview || emailDelivered) && !isTyping && (
+          <p className="shrink-0 border-t border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-center text-[10px] text-emerald-800 dark:text-emerald-300" data-testid="demo-complete">
+            Demo complete. Press Reset Demo to run it again.
+          </p>
+        )}
+
+        {/* Input Area */}
+        {!emailOpen && <div className="shrink-0 p-3 bg-background/95 backdrop-blur-md border-t border-border/50 pb-6 flex flex-col gap-3 z-40 relative">
           <div className="relative flex items-center">
             <Input
               value={inputValue}
@@ -595,7 +630,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
               <Send className="h-3.5 w-3.5 ml-0.5" />
             </Button>
           </div>
-        </div>
+        </div>}
 
       </div>
       <p className="relative z-10 max-w-[380px] text-center text-[10px] leading-relaxed text-muted-foreground" data-testid="demo-channel-note">

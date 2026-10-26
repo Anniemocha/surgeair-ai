@@ -65,6 +65,15 @@ export const GetDashboardResponse = zod.object({
   "status": zod.string(),
   "timestamp": zod.string()
 })),
+  "emailPreview": zod.object({
+  "from": zod.string(),
+  "to": zod.string(),
+  "subject": zod.string(),
+  "body": zod.string(),
+  "provider": zod.string(),
+  "messageId": zod.string().nullable(),
+  "sentAt": zod.string()
+}).optional(),
   "selectedAlternative": zod.string().nullable(),
   "confirmationStatus": zod.string(),
   "actionStatus": zod.string(),
@@ -321,7 +330,16 @@ export const SendItineraryResponse = zod.object({
   "sent": zod.boolean(),
   "channel": zod.string(),
   "message": zod.string(),
+  "sentAt": zod.string(),
+  "emailPreview": zod.object({
+  "from": zod.string(),
+  "to": zod.string(),
+  "subject": zod.string(),
+  "body": zod.string(),
+  "provider": zod.string(),
+  "messageId": zod.string().nullable(),
   "sentAt": zod.string()
+}).optional()
 })
 
 

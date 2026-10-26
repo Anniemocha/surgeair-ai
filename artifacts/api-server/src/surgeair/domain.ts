@@ -28,6 +28,8 @@ import { JsonReadinessStateStore } from "../observability/readiness-state-store"
 import { MessageOrchestrator } from "../orchestration/message-orchestrator";
 import { resolve } from "node:path";
 import { passengerScenarios, type PassengerScenario } from "./scenarios";
+import { maskEmailAddress } from "../channels/aws-ses-provider";
+import type { ItineraryEmailPreview } from "@workspace/api-zod";
 
 export type Channel = "SMS" | "WhatsApp" | "RCS" | "Email";
 
@@ -92,6 +94,7 @@ export interface DemoStateSnapshot {
   conversations: StoredConversation[];
   activities: ActivityRecord[];
   events: SurgeAirEvent[];
+  emailPreview?: ItineraryEmailPreview;
 }
 
 export interface ItinerarySender {
@@ -175,6 +178,8 @@ const { booking, conversation, messages } = createCanonicalDemoState();
 
 let activeScenario = passengerScenarios[0]!;
 let conversationId = "conv-sg4821-disruption";
+// Display metadata only; no credentials or unmasked addresses leave the server.
+let emailPreview: ItineraryEmailPreview | undefined;
 const awsReadinessConfig = getAwsReadinessConfig();
 const readinessStore = new JsonReadinessStateStore(
   resolve(process.cwd(), "data/integration-readiness.json"),
@@ -404,10 +409,12 @@ const store = {
       conversations: conversationRepository.snapshot(),
       activities: activities.map((activity) => ({ ...activity })),
       events: eventStore.snapshot(),
+      ...(emailPreview ? { emailPreview: { ...emailPreview } } : {}),
     };
   },
 
   restoreState(snapshot: DemoStateSnapshot) {
+    emailPreview = snapshot.emailPreview ? { ...snapshot.emailPreview } : undefined;
     activeScenario = scenarioFor(snapshot.booking.bookingReference) ?? activeScenario;
     conversationId = `conv-${activeScenario.bookingReference.toLowerCase()}-disruption`;
     Object.assign(booking, {
@@ -446,6 +453,7 @@ const store = {
   },
 
   resetDemo() {
+    emailPreview = undefined;
     activeScenario = passengerScenarios[0]!;
     conversationId = "conv-sg4821-disruption";
     const canonical = createCanonicalDemoState();
@@ -487,6 +495,7 @@ const store = {
   selectPassenger(reference: string) {
     const next = scenarioFor(reference);
     if (!next) return null;
+    emailPreview = undefined;
     activeScenario = next;
     conversationId = `conv-${next.bookingReference.toLowerCase()}-disruption`;
     const canonical = createCanonicalDemoState(next.bookingReference);
@@ -839,15 +848,28 @@ const store = {
       activeScenario.bookingReference === "SG4821"
         ? `Route: Lisbon (${booking.origin}) → Edinburgh (${booking.destination})`
         : `Route: ${booking.origin} → ${booking.destination}`,
+      `Old flight: ${activeScenario.originalFlight.flightNumber}, ${activeScenario.originalFlight.status.toLowerCase()}${activeScenario.originalFlight.delayMinutes ? ` ${activeScenario.originalFlight.delayMinutes} minutes` : ""}`,
       `New flight: ${booking.currentFlight.flightNumber}`,
       `Departure: ${booking.currentFlight.departure}`,
       `Arrival: ${booking.currentFlight.arrival}`,
+      ...(booking.currentFlight.gate ? [`Gate: ${booking.currentFlight.gate}`] : []),
       `Status: ${booking.status}`,
       ...(activeScenario.bookingReference === "SG4821"
         ? []
         : [`Travelers: ${activeScenario.travelers}`]),
+      "",
+      "Thank you for flying with SurgeAir. Safe travels!",
     ].join("\n");
     const delivery = await emailChannel.sendItinerary(subject, body);
+    emailPreview = {
+      from: maskEmailAddress(awsReadinessConfig.channels.email.fromEmail ?? ""),
+      to: maskEmailAddress(delivery.destination),
+      subject,
+      body,
+      provider: delivery.provider,
+      messageId: delivery.messageId,
+      sentAt: new Date().toISOString(),
+    };
     this.markItinerarySent("Email", delivery.provider === "amazon-ses");
     return {
       sent: delivery.success,
@@ -857,6 +879,7 @@ const store = {
           ? `Updated itinerary for ${booking.bookingReference} accepted by Amazon SES.`
           : `Updated itinerary for ${booking.bookingReference} simulated successfully.`,
       sentAt: new Date().toISOString(),
+      emailPreview,
     };
   },
 
@@ -913,6 +936,7 @@ const store = {
       disruption: activeScenario.originalFlight,
       messages: stored.messages,
       activities,
+      ...(emailPreview ? { emailPreview } : {}),
       selectedAlternative: conversation.selectedFlight,
       confirmationStatus: conversation.confirmationStatus,
       actionStatus: conversation.rebookingStatus,

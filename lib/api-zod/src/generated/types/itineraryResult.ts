@@ -5,10 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ItineraryEmailPreview } from './itineraryEmailPreview';
 
 export interface ItineraryResult {
   sent: boolean;
   channel: string;
   message: string;
   sentAt: string;
+  emailPreview?: ItineraryEmailPreview;
 }

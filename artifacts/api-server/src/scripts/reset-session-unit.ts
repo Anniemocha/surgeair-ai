@@ -5,6 +5,8 @@ process.env.NODE_ENV = "test";
 process.env.MODEL_PROVIDER = "local";
 process.env.SMS_PROVIDER = "simulated";
 process.env.EMAIL_PROVIDER = "simulated";
+process.env.AWS_SES_FROM_EMAIL = "sender@example.com";
+process.env.AWS_SES_TEST_DESTINATION = "recipient@example.com";
 process.env.AWS_WHATSAPP_ENABLED = "false";
 process.env.AWS_RCS_ENABLED = "false";
 process.env.SESSION_SECRET = "unit-test-session-secret";
@@ -70,9 +72,29 @@ const rebooked = await request(
   first.cookie,
 );
 assert.equal(rebooked.response.status, 200);
+const itinerary = await request("/api/itinerary/send", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ bookingReference: "SG4821", channel: "EMAIL" }),
+}, first.cookie);
+assert.equal(itinerary.response.status, 200);
+const preview = itinerary.body.emailPreview as {
+  from: string; to: string; subject: string; body: string;
+  messageId: string | null; provider: string;
+};
+assert.equal(preview.from, "s***@example.com");
+assert.equal(preview.to, "r***@example.com");
+assert.equal(preview.messageId, null);
+assert.equal(preview.provider, "simulated");
+assert.match(preview.body, /New flight: SA218/);
+assert.match(preview.body, /Old flight: SA204, delayed 180 minutes/);
+assert.match(preview.body, /Safe travels!/);
+const savedPreview = await request("/api/dashboard", {}, first.cookie);
+assert.deepEqual(savedPreview.body.emailPreview, preview);
 
 const second = await request("/api/dashboard");
 assert(second.cookie);
+assert.equal(second.body.emailPreview, undefined);
 assert.equal((second.body.booking as { currentFlight: { flightNumber: string } }).currentFlight.flightNumber, "SA204");
 
 const [, secondSelected] = await Promise.all([
@@ -130,6 +152,7 @@ assert.deepEqual(reset.body, {
 });
 
 const afterReset = await request("/api/dashboard", {}, first.cookie);
+assert.equal(afterReset.body.emailPreview, undefined);
 const resetBooking = afterReset.body.booking as {
   currentFlight: { flightNumber: string };
   status: string;

@@ -1,1 +1,2 @@
 - [AgentCore secret-free bundling](agentcore-secret-free-bundling.md) — esbuild define only replaces exact env expressions; pass auth mode explicitly and scan the final bundle.
+- [Reset status](reset-status.md) — keep the existing notified flow after Reset Demo; show Awaiting passenger reply, not an extra Start Demo screen.

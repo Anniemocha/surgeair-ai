@@ -7,6 +7,7 @@ export interface TurnExecution {
   runtimeSessionId: string;
   timestamp: string;
   fallbackReason?: string;
+  fallbackError?: string;
   modelProvider?: string;
 }
 export interface AgentCoreClient {
@@ -51,9 +52,16 @@ export class AgentCoreModelProvider implements ModelProvider {
       return interpretation;
     } catch (error) {
       const fallbackReason = error instanceof Error ? error.name : "AgentCoreError";
+      const fallbackError = error instanceof Error
+        ? `${error.name}: ${error.message}`
+          .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[masked email]")
+          .replace(/\+\d{8,15}\b/g, "[masked phone]")
+          .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, "[masked access key]")
+          .replace(/\bBearer\s+\S+/gi, "Bearer [masked token]")
+        : "AgentCoreError";
       this.options.logger.record("agentcore_invocation_failed", { runtimeSessionId, errorName: fallbackReason, attempted: !!this.options.runtimeArn });
       const interpretation = await this.options.fallback.interpretPassengerRequest(content, context);
-      this.options.onTurn({ path: "Direct Bedrock fallback", runtimeSessionId, timestamp: new Date().toISOString(), fallbackReason, modelProvider: interpretation.provider });
+      this.options.onTurn({ path: "Direct Bedrock fallback", runtimeSessionId, timestamp: new Date().toISOString(), fallbackReason, fallbackError, modelProvider: interpretation.provider });
       return interpretation;
     }
   }

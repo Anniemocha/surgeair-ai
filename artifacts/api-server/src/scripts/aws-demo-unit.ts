@@ -109,6 +109,25 @@ const denied = new AgentCoreModelProvider({ ...base, client: { async send() { th
 await denied.interpretPassengerRequest("arrive before 18:00");
 assert.equal(turns.at(-1)!.path, "Direct Bedrock fallback");
 assert.equal(turns.at(-1)!.fallbackReason, "AccessDeniedException");
+assert.equal(turns.at(-1)!.fallbackError, "AccessDeniedException: Denied");
+const fallbackStore = createSurgeAirStore({
+  runtimeArn: "test-arn",
+  model: direct,
+  agentCoreClient: { async send() { throw Object.assign(new Error("Received error (400) from runtime."), { name: "RuntimeClientError" }); } },
+});
+await fallbackStore.interpretMessage("Arrive before 18:00", "SG4821");
+assert.equal(fallbackStore.getDashboard().integrationStatus.find(item => item.service === "Bedrock AgentCore")!.status, "Configured, fallback active");
+assert.equal(fallbackStore.getDashboard().orchestration.turnHistory[0].fallbackError, "RuntimeClientError: Received error (400) from runtime.");
+assert(!fallbackStore.getDashboard().activities.some(item => item.detail?.includes("RuntimeClientError")));
+fallbackStore.resetDemo();
+assert.equal(fallbackStore.getDashboard().integrationStatus.find(item => item.service === "Bedrock AgentCore")!.status, "CONFIGURED");
+const localFallbackStore = createSurgeAirStore({
+  runtimeArn: "test-arn",
+  model: { ...direct, interpretPassengerRequest: (text, context) => local.interpretPassengerRequest(text, context) },
+  agentCoreClient: { async send() { throw new Error("Runtime unavailable"); } },
+});
+await localFallbackStore.interpretMessage("Arrive before 18:00", "SG4821");
+assert.equal(localFallbackStore.getDashboard().integrationStatus.find(item => item.service === "Bedrock AgentCore")!.status, "ERROR");
 const timeout = new AgentCoreModelProvider({ ...base, timeoutMs: 5, client: { send: () => new Promise(() => {}) } });
 await timeout.interpretPassengerRequest("arrive before 18:00");
 assert.equal(turns.at(-1)!.path, "Direct Bedrock fallback");
@@ -117,5 +136,5 @@ const legacy = new AgentCoreModelProvider({ ...base, client: { async send() {
 } } });
 await legacy.interpretPassengerRequest("arrive before 18:00");
 assert.equal(turns.at(-1)!.fallbackReason, "RuntimeProtocolError");
-assert.equal(fallbackCalls, 3);
+assert.equal(fallbackCalls, 4);
 console.log("Session-scoped AWS evidence, SMS idempotency/failure, per-turn AgentCore, and timeout/fallback checks passed.");

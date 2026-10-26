@@ -500,6 +500,7 @@ components:
         runtimeSessionId: { type: string }
         timestamp: { type: string }
         fallbackReason: { type: string }
+        fallbackError: { type: string }
         modelProvider: { type: string }
     SmsDeliveryReceipt:
       type: object

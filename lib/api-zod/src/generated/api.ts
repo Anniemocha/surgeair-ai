@@ -103,6 +103,7 @@ export const GetDashboardResponse = zod.object({
   "runtimeSessionId": zod.string(),
   "timestamp": zod.string(),
   "fallbackReason": zod.string().optional(),
+  "fallbackError": zod.string().optional(),
   "modelProvider": zod.string().optional()
 })).optional()
 }),
@@ -285,6 +286,7 @@ export const StartDemoResponse = zod.object({
   "runtimeSessionId": zod.string(),
   "timestamp": zod.string(),
   "fallbackReason": zod.string().optional(),
+  "fallbackError": zod.string().optional(),
   "modelProvider": zod.string().optional()
 })).optional()
 }),

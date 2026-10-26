@@ -340,13 +340,26 @@ export function DashboardPanel({ dashboard, headerAction, displayStatus }: Dashb
                        <p className="text-[10px] font-medium truncate">{orchestration.modelLatencyMs} ms</p>
                      </div>
                    )}
-                   {orchestration.modelFallbackReason && (
-                      <div className="space-y-0.5 col-span-2 sm:col-span-3 lg:col-span-5 text-[10px] text-destructive mt-1">
-                       Fallback: {orchestration.modelFallbackReason}
-                     </div>
-                   )}
                  </div>
               </div>
+              {!!orchestration.turnHistory?.length && (
+                <details className="mt-3 border-t border-border/30 pt-2 text-[10px]" data-testid="orchestration-details">
+                  <summary className="cursor-pointer text-muted-foreground">Execution details</summary>
+                  <div className="mt-2 space-y-3">
+                    {orchestration.turnHistory.map((turn, index) => (
+                      <div key={`${turn.timestamp}-${index}`}>
+                        <p className="font-medium">Turn {index + 1}: {turn.path}</p>
+                        <p className="text-muted-foreground">{displayTime(turn.timestamp)}</p>
+                        <p className="break-all font-mono text-muted-foreground">Session: {turn.runtimeSessionId}</p>
+                        {(turn.fallbackError || turn.fallbackReason) && (
+                          <pre className="mt-1 whitespace-pre-wrap break-words font-mono" data-testid="text-agentcore-error">{turn.fallbackError ?? turn.fallbackReason}</pre>
+                        )}
+                      </div>
+                    ))}
+                    {orchestration.modelFallbackReason && <p className="whitespace-pre-wrap break-words">Bedrock detail: {orchestration.modelFallbackReason}</p>}
+                  </div>
+                </details>
+              )}
             </CardContent>
           </Card>
 

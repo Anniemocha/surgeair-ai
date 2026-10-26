@@ -242,7 +242,7 @@ const model = directModel.provider === "amazon-bedrock" ? new AgentCoreModelProv
   onTurn(turn) {
     if (invocationScope.getStore() !== generation) return;
     turnHistory.push(turn);
-    addActivity(`Turn handled via ${turn.path}`, `Runtime session ID: ${turn.runtimeSessionId}${turn.fallbackReason ? ` • ${turn.fallbackReason}` : ""}`);
+    addActivity(`Turn handled via ${turn.path}`, `Runtime session ID: ${turn.runtimeSessionId}`);
   },
 }) : directModel;
 function resetInvocationEvidence() {
@@ -1058,7 +1058,14 @@ const store = {
           : service === "Bedrock AgentCore" ? !!runtimeArn
           : service === "Amazon SES" ? !!awsReadinessConfig.channels.email.fromEmail && !!awsReadinessConfig.channels.email.testDestination
           : service === "AWS End User Messaging SMS" ? !!simulatorDestination : false;
-        return sessionInvocations.readiness(service, configured, simulated);
+        const readiness = sessionInvocations.readiness(service, configured, simulated);
+        const lastTurn = turnHistory.at(-1);
+        if (service === "Bedrock AgentCore" && configured
+          && lastTurn?.path === "Direct Bedrock fallback"
+          && lastTurn.modelProvider === "amazon-bedrock") {
+          return { ...readiness, status: "Configured, fallback active" };
+        }
+        return readiness;
       }),
     };
   },

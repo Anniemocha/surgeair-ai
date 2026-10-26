@@ -516,6 +516,8 @@ The browser retains the same demo booking sequence and presentation. The followi
 
 Integration Readiness starts at **Configured**, **Not invoked yet**, or **Simulated**. A service changes to **Invoked** with its first successful invocation timestamp in this conversation; reset clears that evidence. No badge is proof of a physical SMS or inbox delivery.
 
+When AgentCore fails but the direct Bedrock call succeeds, its readiness card says **Configured, fallback active**. Exact runtime error details are available only under **AI Agent Orchestration → Execution details**. See [the runtime contract, manual deployment commands, and scoped deployment permissions](docs/agentcore-runtime-update.md).
+
 ### AgentCore and SMS prerequisites
 
 - Set `AGENTCORE_RUNTIME_ARN` to the existing runtime ARN. Runtime names alone cannot invoke a runtime. The API's IAM identity needs `bedrock-agentcore:InvokeAgentRuntime`; runtime discovery is not required.

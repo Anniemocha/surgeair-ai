@@ -171,6 +171,7 @@ export interface TurnExecution {
   runtimeSessionId: string;
   timestamp: string;
   fallbackReason?: string;
+  fallbackError?: string;
   modelProvider?: string;
 }
 

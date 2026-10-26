@@ -34,9 +34,11 @@ import { Badge } from "@/components/ui/badge";
 import { wasItineraryEmailDelivered } from "./email-delivery-activity";
 import { describeAlternatives, distinctAlternatives } from "./alternatives";
 import { uniqueSuggestedReplies } from "./suggested-replies";
+import { demoStatus, type DemoStatus } from "@/components/demo-presentation";
 
 interface SimulatorPanelProps {
   dashboard: Dashboard;
+  onStatusChange: (status: DemoStatus) => void;
 }
 
 function displayTime(value: string) {
@@ -48,7 +50,7 @@ function displayTime(value: string) {
   return Number.isNaN(parsed.getTime()) ? value : format(parsed, "HH:mm");
 }
 
-export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
+export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProps) {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ConversationMessage[]>(dashboard.messages);
   const [inputValue, setInputValue] = useState("");
@@ -107,6 +109,22 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   const selectConversationChannel = useSelectConversationChannel();
   const channels = ["SMS", "WhatsApp", "RCS", "Email"] as const;
   const emailDelivered = wasItineraryEmailDelivered(dashboard.activities);
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const lastAgentMessage = [...messages].reverse().find(message => message.sender !== "passenger");
+    onStatusChange(demoStatus({
+      notified: messages.length > 0,
+      optionsShown: showingOptions,
+      selected: !!awaitingConfirmationFor,
+      confirmed: rebookSuccess || dashboard.actionStatus === "Rebooked",
+      emailDelivered,
+      cancelled: /won't rebook|rebooking cancelled/i.test(lastAgentMessage?.text ?? ""),
+    }));
+  }, [messages, showingOptions, awaitingConfirmationFor, rebookSuccess, emailDelivered, dashboard.actionStatus, onStatusChange]);
 
   const handleSelectChannel = async (channel: "SMS" | "WhatsApp" | "RCS") => {
     if (isTyping || selectConversationChannel.isPending || activeChannel === channel) return;
@@ -337,7 +355,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
   };
 
   return (
-    <div className="flex-1 flex items-center justify-center p-4 lg:p-8 bg-muted/30 overflow-hidden relative">
+    <div className="flex-1 flex flex-col gap-3 items-center justify-center p-4 lg:p-5 bg-muted/30 relative">
       
       {/* Decorative background elements */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
@@ -345,8 +363,14 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
         <div className="absolute bottom-0 -left-12 w-72 h-72 bg-secondary/10 rounded-full blur-3xl" />
       </div>
 
+      <aside className="relative z-10 w-full max-w-[380px] rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs leading-relaxed text-foreground" data-testid="demo-instruction">
+        {dashboard.disruption.flightNumber === "SA204"
+          ? "Try it: the passenger's flight SA204 is delayed. Tap 'Arrive before 18:00' to watch the agent find and rebook an alternative."
+          : `Try it: explore the disruption on ${dashboard.disruption.flightNumber}. Tap an arrival-time suggestion below to see suitable alternatives.`}
+      </aside>
+
       {/* Device Mockup */}
-      <div className="w-full max-w-[380px] h-[min(760px,calc(100dvh-48px))] min-h-[560px] bg-background rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(12,38,58,0.3)] border-[10px] border-primary relative flex flex-col overflow-hidden ring-1 ring-border z-10">
+      <div className="w-full max-w-[380px] h-[min(760px,calc(100dvh-220px))] min-h-[440px] shrink-0 bg-background rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(12,38,58,0.3)] border-[10px] border-primary relative flex flex-col overflow-hidden ring-1 ring-border z-10">
         
         {/* Dynamic Island / Notch area */}
         <div className="absolute top-0 inset-x-0 h-6 flex justify-center z-50">
@@ -355,7 +379,7 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
 
         {/* Status Bar */}
         <div className="h-11 bg-background/95 backdrop-blur-md flex items-center justify-between px-6 pt-1 text-[11px] font-semibold z-40">
-          <span>{format(new Date(), "HH:mm")}</span>
+          <span>{format(clock, "HH:mm")}</span>
           <div className="flex items-center gap-1.5 opacity-80">
             <Signal className="h-3 w-3 fill-current" />
             <Wifi className="h-3 w-3" />
@@ -574,6 +598,9 @@ export function SimulatorPanel({ dashboard }: SimulatorPanelProps) {
         </div>
 
       </div>
+      <p className="relative z-10 max-w-[380px] text-center text-[10px] leading-relaxed text-muted-foreground" data-testid="demo-channel-note">
+        SMS uses AWS simulated numbers. WhatsApp and RCS are simulated. Email is sent via Amazon SES in sandbox mode.
+      </p>
     </div>
   );
 }

@@ -57,7 +57,8 @@ export function PassengerExplorer({ activeReference, pending, onSelect }: Props)
 
   return <Dialog open={open} onOpenChange={setOpen}>
     <DialogTrigger asChild>
-      <Button variant="outline" size="sm" className="h-9 gap-2 border-primary/25 bg-card font-semibold text-primary shadow-sm hover:bg-primary/10" data-testid="btn-open-passenger-explorer">
+      <Button variant="outline" size="sm" className="h-9 gap-2 border-primary/25 bg-card font-semibold text-primary shadow-sm hover:bg-primary/10" title="Switch between fictional passenger disruption scenarios. Switching starts a fresh demo conversation." data-testid="btn-open-passenger-explorer">
+        <span className="sr-only">Switch between fictional passenger disruption scenarios. Switching starts a fresh demo conversation.</span>
         <Users className="h-4 w-4" /> <span className="hidden sm:inline">Passenger Explorer</span><span className="sm:hidden">Explore</span>
       </Button>
     </DialogTrigger>

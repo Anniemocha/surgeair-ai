@@ -17,6 +17,8 @@ import { Loader2, Plane, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { chronological, demoStatus, eventTime, type DemoStatus } from "@/components/demo-presentation";
+import { wasItineraryEmailDelivered } from "@/components/simulator/email-delivery-activity";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -108,7 +110,21 @@ export function Home() {
   });
   const [resetVersion, setResetVersion] = useState(0);
   const [switching, setSwitching] = useState(false);
-  const { data: dashboard, isLoading, error, refetch } = useGetDashboard();
+  const [startedAt, setStartedAt] = useState(() => new Date().toISOString());
+  const [conversationStatus, setConversationStatus] = useState<DemoStatus | null>(null);
+  const { data: rawDashboard, isLoading, error, refetch } = useGetDashboard();
+  const dashboard = rawDashboard ? {
+    ...rawDashboard,
+    messages: rawDashboard.messages.map(message => ({ ...message, timestamp: eventTime(message.timestamp, startedAt) })),
+    activities: chronological(rawDashboard.activities.map(activity => ({ ...activity, timestamp: eventTime(activity.timestamp, startedAt) }))),
+  } : undefined;
+  const actionStatus = conversationStatus ?? (dashboard ? demoStatus({
+    notified: dashboard.messages.length > 0 || dashboard.activities.some(activity => activity.label === "Passenger notified"),
+    optionsShown: dashboard.orchestration.currentAgentState === "Presenting alternatives",
+    selected: !!dashboard.selectedAlternative,
+    confirmed: dashboard.actionStatus === "Rebooked",
+    emailDelivered: wasItineraryEmailDelivered(dashboard.activities),
+  }) : "Not started");
   const resetDemo = useResetDemo();
   const selectPassenger = useSelectPassenger();
 
@@ -125,6 +141,8 @@ export function Home() {
     queryClient.removeQueries({ queryKey: getGetBookingQueryKey(next.booking.bookingReference) });
     queryClient.removeQueries({ queryKey: getGetFlightStatusQueryKey(next.disruption.flightNumber) });
     queryClient.setQueryData(getGetDashboardQueryKey(), next);
+    setStartedAt(new Date().toISOString());
+    setConversationStatus(null);
     setResetVersion(version => version + 1);
   };
 
@@ -197,7 +215,7 @@ export function Home() {
             One conversation. Every channel. A smoother journey.
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <PassengerExplorer activeReference={dashboard.booking.bookingReference} pending={selectPassenger.isPending} onSelect={handleSelect} />
           <ThemeSelector theme={theme} onChange={setTheme} />
           <ResetDemoControl
@@ -206,14 +224,15 @@ export function Home() {
           />
           <Badge
             variant={
-              dashboard.actionStatus === "Rebooked"
+              actionStatus === "Rebooked"
                 ? "default"
                 : "secondary"
             }
-            className="text-[9px] uppercase"
+            className={`text-[9px] ${actionStatus === "Rebooked" ? "bg-emerald-600 text-white" : ""}`}
+            aria-live="polite"
             data-testid="badge-mobile-action-status"
           >
-            {dashboard.actionStatus}
+            {actionStatus}
           </Badge>
         </div>
       </header>
@@ -222,6 +241,7 @@ export function Home() {
       <div className="order-2 w-full lg:order-1 lg:w-1/2 xl:w-[55%] min-h-[50dvh] lg:h-[100dvh] border-b lg:border-b-0 lg:border-r border-border overflow-hidden flex flex-col bg-background">
         <DashboardPanel
           dashboard={dashboard}
+          displayStatus={actionStatus}
           headerAction={<>
             <PassengerExplorer activeReference={dashboard.booking.bookingReference} pending={selectPassenger.isPending} onSelect={handleSelect} />
             <ThemeSelector theme={theme} onChange={setTheme} />
@@ -235,7 +255,7 @@ export function Home() {
 
       {/* Right side: Passenger Device Simulator */}
       <div className="order-1 w-full lg:order-2 lg:w-1/2 xl:w-[45%] min-h-[70dvh] lg:h-[100dvh] overflow-hidden flex flex-col relative bg-muted/30">
-        <SimulatorPanel key={`${dashboard.booking.bookingReference}-${resetVersion}`} dashboard={dashboard} />
+        <SimulatorPanel key={`${dashboard.booking.bookingReference}-${resetVersion}`} dashboard={dashboard} onStatusChange={setConversationStatus} />
         {switching && <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/90 backdrop-blur-sm" data-testid="status-switching-passenger">
           <div className="h-6 w-40 animate-pulse rounded-lg bg-muted" />
           <div className="h-52 w-72 animate-pulse rounded-[2rem] bg-muted" />

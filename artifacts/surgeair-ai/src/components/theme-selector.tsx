@@ -6,7 +6,7 @@ const themes = { light: "Light", dark: "Dark", "eye-care": "Eye Care" };
 
 export function ThemeSelector({ theme, onChange }: { theme: Theme; onChange: (theme: Theme) => void }) {
   return <Select value={theme} onValueChange={value => onChange(value as Theme)}>
-    <SelectTrigger className="h-9 w-[108px] gap-1 border-primary/20 bg-card px-2 text-xs font-semibold text-foreground sm:w-[125px] sm:px-3" aria-label="Appearance theme" data-testid="select-theme">
+    <SelectTrigger className="h-9 w-[108px] gap-1 border-primary/20 bg-card px-2 text-xs font-semibold text-foreground sm:w-[125px] sm:px-3" aria-label="Appearance theme — Eye Care is a display comfort mode" title="Choose a display theme. Eye Care uses warmer, softer colors for viewing comfort." data-testid="select-theme">
       <SelectValue placeholder="Theme" />
     </SelectTrigger>
     <SelectContent className="border-border bg-popover text-popover-foreground">

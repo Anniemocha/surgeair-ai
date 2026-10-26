@@ -16,6 +16,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { DemoStatus } from "@/components/demo-presentation";
 
 function displayTime(value: string) {
   if (/^\d{2}:\d{2}(:\d{2})?$/.test(value)) {
@@ -93,9 +94,10 @@ function readinessStyle(status: string) {
 interface DashboardPanelProps {
   dashboard: Dashboard;
   headerAction?: React.ReactNode;
+  displayStatus: DemoStatus;
 }
 
-export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps) {
+export function DashboardPanel({ dashboard, headerAction, displayStatus }: DashboardPanelProps) {
   const {
     activities,
     confirmationStatus,
@@ -126,8 +128,8 @@ export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps)
         </div>
         <div className="flex items-center gap-3">
           {headerAction}
-          <Badge variant={actionStatus === 'Rebooked' ? 'default' : 'secondary'} className="uppercase text-[10px] font-bold tracking-wider" data-testid="badge-action-status">
-            {actionStatus}
+          <Badge variant={displayStatus === 'Rebooked' ? 'default' : 'secondary'} className={`text-[10px] font-bold tracking-wider ${displayStatus === "Rebooked" ? "bg-emerald-600 text-white" : ""}`} aria-live="polite" data-testid="badge-action-status">
+            {displayStatus}
           </Badge>
         </div>
       </header>
@@ -349,7 +351,7 @@ export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps)
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4 pb-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {integrationStatus.map((integration, idx) => {
                    const style = readinessStyle(integration.status);
                    const isConnected = integration.status.toUpperCase() === "CONNECTED";
@@ -365,8 +367,8 @@ export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps)
                         ) : (
                            <AlertCircle className={`h-3 w-3 shrink-0 ${style.icon}`} />
                         )}
-                        <span className="text-xs font-semibold leading-tight line-clamp-1 truncate" title={integration.service}>
-                          {integration.service}
+                        <span className="min-w-0 text-xs font-semibold leading-snug break-words" title={integration.service}>
+                          {integration.service === "AWS End User Messaging SMS" ? "AWS End User Messaging" : integration.service}
                         </span>
                       </div>
                        <span className={`text-[9px] uppercase tracking-wider font-bold pl-5 ${style.text}`}>
@@ -376,9 +378,9 @@ export function DashboardPanel({ dashboard, headerAction }: DashboardPanelProps)
                          <span className="pl-5 text-[10px] leading-tight text-muted-foreground" title={integration.detail ?? undefined}>
                            AWS SMS Simulator
                          </span>
-                       ) : integration.detail ? (
-                         <span className="text-[10px] text-muted-foreground pl-5 truncate" title={integration.detail}>
-                           {integration.detail}
+                       ) : integration.detail || /SES/i.test(integration.service) ? (
+                         <span className="text-[10px] text-muted-foreground pl-5 leading-snug break-words" title={integration.detail ?? undefined}>
+                           {/SES/i.test(integration.service) ? "Email (SES sandbox, verified recipient)" : /WhatsApp|RCS/i.test(integration.service) ? "Simulated" : integration.detail}
                          </span>
                        ) : null}
                     </div>

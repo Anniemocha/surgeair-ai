@@ -20,10 +20,18 @@ const direct: ModelProvider = {
   generateResponse: context => local.generateResponse(context),
 };
 let runtimeCalls = 0;
+let capabilityCalls = 0;
 const runtime: AgentCoreClient = {
   async send(command) {
-    runtimeCalls++;
     const body = JSON.parse(Buffer.from(command.input.payload as Uint8Array).toString());
+    if (body.mode === "capabilities") {
+      capabilityCalls++;
+      assert.equal(body.message, undefined);
+      return { contentType: "application/json", statusCode: 200, $metadata: {},
+        response: { transformToString: async () => JSON.stringify({ mode: "capabilities", protocolVersion: 1, interpretationOnly: true }) },
+      } as unknown as InvokeAgentRuntimeCommandOutput;
+    }
+    runtimeCalls++;
     assert.equal(body.mode, "interpret");
     assert.equal(body.context.bookingReference, "SG4821");
     const interpretation = { ...await local.interpretPassengerRequest(body.message, body.context), provider: "amazon-bedrock" };
@@ -69,6 +77,7 @@ assert.equal(smsCalls, 2);
 assert.match(smsBodies[1]!, /SA218.*11:30.*14:40.*SG4821/);
 await store.interpretMessage("Thanks", "SG4821");
 assert.equal(runtimeCalls, 4);
+assert.equal(capabilityCalls, 1);
 assert.equal(fallbackCalls, 0);
 const history = store.getDashboard().orchestration.turnHistory;
 assert.equal(history.length, 4);

@@ -7,7 +7,7 @@ The browser demo's AgentCore path must interpret passenger messages without inde
 
 **Why:** The original standalone runtime also executes its own hardcoded demo booking actions. Routing the browser through that legacy protocol would duplicate booking authority and use the wrong context for other passenger scenarios. An incompatible runtime must fall back, not silently supply booking actions.
 
-**How to apply:** Deploy and require the interpretation-only protocol, pass the active passenger context, and keep deterministic booking guards in the API. Keep the direct Bedrock fallback for runtime failures or timeouts.
+**How to apply:** Deploy and require the interpretation-only protocol. Check capabilities without a passenger message before forwarding any turn: rejecting a legacy response afterward is too late to prevent remote booking actions. Pass the active passenger context and keep deterministic booking guards in the API. Keep the direct Bedrock fallback for runtime failures or timeouts.
 
 Integration Readiness must reflect actual successful invocations in the current conversation, never committed verification evidence or a previous conversation's success.
 

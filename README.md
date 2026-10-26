@@ -519,7 +519,7 @@ Integration Readiness starts at **Configured**, **Not invoked yet**, or **Simula
 ### AgentCore and SMS prerequisites
 
 - Set `AGENTCORE_RUNTIME_ARN` to the existing runtime ARN. Runtime names alone cannot invoke a runtime. The API's IAM identity needs `bedrock-agentcore:InvokeAgentRuntime`; runtime discovery is not required.
-- Deploy the updated interpretation-only runtime (`pnpm --filter @workspace/api-server run build:agentcore`) to that ARN before enabling it. The runtime role must have Bedrock model access. Its model configuration uses the runtime's IAM role, never the Replit bearer token.
+- Deploy the updated interpretation-only runtime (`pnpm --filter @workspace/api-server run build:agentcore`) to that ARN before enabling it. A message-free capability probe must succeed before the server forwards user turns, preventing old runtimes from executing their own booking actions. The runtime role must have Bedrock model access. Its model configuration uses the runtime's IAM role, never the Replit bearer token.
 - Configure `AWS_SMS_SIMULATOR_DESTINATION` and, where required by the simulator setup, `AWS_SMS_ORIGINATION_NUMBER`. Missing configuration or denied calls are reported as failures, never fabricated successes.
 - Actual AWS calls require the account's IAM permissions and resources. The repository alone cannot provision access, destinations, or runtime permissions. Invocation receipts and conversation state are in memory and are lost on server restart.
 

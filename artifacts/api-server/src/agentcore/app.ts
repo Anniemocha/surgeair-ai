@@ -92,7 +92,10 @@ class InvocationError extends Error {
 
 export async function handleInvocation(
   payload: unknown,
-): Promise<AgentCoreResponse | { mode: "interpret"; interpretation: PassengerInterpretation }> {
+): Promise<AgentCoreResponse | { mode: "interpret"; interpretation: PassengerInterpretation } | { mode: "capabilities"; protocolVersion: 1; interpretationOnly: true }> {
+  if (payload && typeof payload === "object" && "mode" in payload && payload.mode === "capabilities") {
+    return { mode: "capabilities", protocolVersion: 1, interpretationOnly: true };
+  }
   if (payload && typeof payload === "object" && "mode" in payload && payload.mode === "interpret") {
     const input = payload as { message?: unknown; context?: PassengerContext };
     if (typeof input.message !== "string" || !input.message.trim()) throw new InvocationError(400, "A message is required.");

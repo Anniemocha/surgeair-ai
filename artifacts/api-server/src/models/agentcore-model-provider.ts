@@ -17,6 +17,8 @@ export interface AgentCoreClient {
 export class AgentCoreModelProvider implements ModelProvider {
   readonly provider = "amazon-bedrock" as const;
   private client: AgentCoreClient;
+  private protocolSessionId?: string;
+  private protocolCheck?: Promise<void>;
 
   constructor(private options: {
     region: string;
@@ -35,38 +37,15 @@ export class AgentCoreModelProvider implements ModelProvider {
     const runtimeSessionId = this.options.sessionId();
     try {
       if (!this.options.runtimeArn) throw Object.assign(new Error("Runtime ARN not configured"), { name: "RuntimeNotConfigured" });
-      const command = new InvokeAgentRuntimeCommand({
-        agentRuntimeArn: this.options.runtimeArn,
-        qualifier: "DEFAULT",
-        runtimeSessionId,
-        contentType: "application/json",
-        accept: "application/json",
-        payload: Buffer.from(JSON.stringify({ mode: "interpret", message: content, context })),
-      });
-      const controller = new AbortController();
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const deadline = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          controller.abort();
-          reject(Object.assign(new Error("AgentCore invocation timed out"), { name: "AgentCoreTimeout" }));
-        }, this.options.timeoutMs ?? 12_000);
-      });
-      let payload;
-      try {
-        payload = await Promise.race([(async () => {
-          const response = await this.client.send(command, { abortSignal: controller.signal });
-          if (response.statusCode && response.statusCode >= 400) throw Object.assign(new Error("Runtime rejected invocation"), { name: "AgentCoreRuntimeError" });
-          return JSON.parse(await response.response!.transformToString());
-        })(), deadline]);
-      } finally { clearTimeout(timer); }
-      this.options.logger.record("agentcore_invocation_succeeded", {
-        runtimeSessionId, bedrockInvoked: payload.mode === "interpret" && payload.interpretation?.provider === "amazon-bedrock",
-      });
-      // Reject older, stateful runtimes rather than trusting their booking actions.
+      await this.ensureInterpretationProtocol(runtimeSessionId);
+      const payload = await this.invoke({ mode: "interpret", message: content, context }, runtimeSessionId);
       if (payload.mode !== "interpret" || !isInterpretation(payload.interpretation)) {
         throw Object.assign(new Error("Runtime requires interpretation-only protocol"), { name: "RuntimeProtocolError" });
       }
       const interpretation: PassengerInterpretation = payload.interpretation;
+      this.options.logger.record("agentcore_invocation_succeeded", {
+        runtimeSessionId, bedrockInvoked: interpretation.provider === "amazon-bedrock",
+      });
       if (interpretation.provider !== "amazon-bedrock") throw Object.assign(new Error("Runtime used local model"), { name: "RuntimeModelUnavailable" });
       this.options.onTurn({ path: "AgentCore runtime", runtimeSessionId, timestamp: new Date().toISOString(), modelProvider: interpretation.provider });
       return interpretation;
@@ -81,6 +60,51 @@ export class AgentCoreModelProvider implements ModelProvider {
 
   generateResponse(context: Parameters<ModelProvider["generateResponse"]>[0]) {
     return this.options.fallback.generateResponse(context);
+  }
+
+  private async ensureInterpretationProtocol(runtimeSessionId: string) {
+    if (this.protocolSessionId === runtimeSessionId && this.protocolCheck) return this.protocolCheck;
+    this.protocolSessionId = runtimeSessionId;
+    // No message in this probe: legacy runtimes cannot execute booking actions.
+    const check = this.invoke({ mode: "capabilities" }, runtimeSessionId).then(payload => {
+      if (payload.mode !== "capabilities" || payload.protocolVersion !== 1 || payload.interpretationOnly !== true) {
+        throw Object.assign(new Error("Interpretation-only runtime update required"), { name: "RuntimeProtocolError" });
+      }
+      this.options.logger.record("agentcore_invocation_succeeded", { runtimeSessionId, bedrockInvoked: false, stage: "capabilities" });
+    });
+    this.protocolCheck = check;
+    try { await check; } catch (error) {
+      if (this.protocolCheck === check) this.protocolCheck = undefined;
+      throw error;
+    }
+  }
+
+  private async invoke(payload: Record<string, unknown>, runtimeSessionId: string) {
+    const command = new InvokeAgentRuntimeCommand({
+      agentRuntimeArn: this.options.runtimeArn!,
+      qualifier: "DEFAULT",
+      runtimeSessionId,
+      contentType: "application/json",
+      accept: "application/json",
+      payload: Buffer.from(JSON.stringify(payload)),
+    });
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(Object.assign(new Error("AgentCore invocation timed out"), { name: "AgentCoreTimeout" }));
+      }, this.options.timeoutMs ?? 12_000);
+    });
+    try {
+      return await Promise.race([(async () => {
+        const response = await this.client.send(command, { abortSignal: controller.signal });
+        if (response.statusCode && response.statusCode >= 400) {
+          throw Object.assign(new Error("Runtime rejected invocation"), { name: payload.mode === "capabilities" ? "RuntimeProtocolError" : "AgentCoreRuntimeError" });
+        }
+        return JSON.parse(await response.response!.transformToString());
+      })(), deadline]);
+    } finally { clearTimeout(timer); }
   }
 }
 

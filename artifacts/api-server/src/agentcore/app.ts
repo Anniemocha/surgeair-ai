@@ -1,5 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { getModelProviderConfiguration } from "../models/model-provider-factory";
+import { createModelProvider } from "../models/model-provider-factory";
+import { LocalOperationalLogger } from "../observability/operational-logger";
+import type { PassengerContext, PassengerInterpretation } from "../models/model-provider";
 import { surgeAirStore } from "../surgeair/domain";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -8,6 +11,7 @@ const BOOKING_REFERENCE = "SG4821";
 const ORIGIN = "LIS";
 const DESTINATION = "EDI";
 const MAX_BODY_BYTES = 1_048_576;
+const interpretationModel = createModelProvider(new LocalOperationalLogger());
 
 const modelConfiguration = getModelProviderConfiguration({
   requestedProvider: process.env.MODEL_PROVIDER,
@@ -88,7 +92,12 @@ class InvocationError extends Error {
 
 export async function handleInvocation(
   payload: unknown,
-): Promise<AgentCoreResponse> {
+): Promise<AgentCoreResponse | { mode: "interpret"; interpretation: PassengerInterpretation }> {
+  if (payload && typeof payload === "object" && "mode" in payload && payload.mode === "interpret") {
+    const input = payload as { message?: unknown; context?: PassengerContext };
+    if (typeof input.message !== "string" || !input.message.trim()) throw new InvocationError(400, "A message is required.");
+    return { mode: "interpret", interpretation: await interpretationModel.interpretPassengerRequest(input.message, input.context) };
+  }
   const message = extractPassengerMessage(payload);
   if (!message) {
     throw new InvocationError(

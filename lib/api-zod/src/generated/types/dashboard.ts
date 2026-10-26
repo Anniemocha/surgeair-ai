@@ -12,6 +12,7 @@ import type { Flight } from './flight';
 import type { IntegrationReadiness } from './integrationReadiness';
 import type { ItineraryEmailPreview } from './itineraryEmailPreview';
 import type { OrchestrationState } from './orchestrationState';
+import type { SmsDeliveryReceipt } from './smsDeliveryReceipt';
 
 export interface Dashboard {
   booking: Booking;
@@ -19,6 +20,7 @@ export interface Dashboard {
   messages: ConversationMessage[];
   activities: Activity[];
   emailPreview?: ItineraryEmailPreview;
+  smsDeliveries?: SmsDeliveryReceipt[];
   /** @nullable */
   selectedAlternative: string | null;
   confirmationStatus: string;

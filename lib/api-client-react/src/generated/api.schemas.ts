@@ -141,6 +141,39 @@ export interface ItineraryEmailPreview {
   sentAt: string;
 }
 
+export type SmsDeliveryReceiptKind = typeof SmsDeliveryReceiptKind[keyof typeof SmsDeliveryReceiptKind];
+
+
+export const SmsDeliveryReceiptKind = {
+  notification: 'notification',
+  confirmation: 'confirmation',
+} as const;
+
+export type SmsDeliveryReceiptStatus = typeof SmsDeliveryReceiptStatus[keyof typeof SmsDeliveryReceiptStatus];
+
+
+export const SmsDeliveryReceiptStatus = {
+  sent: 'sent',
+  failed: 'failed',
+  simulated: 'simulated',
+} as const;
+
+export interface SmsDeliveryReceipt {
+  kind: SmsDeliveryReceiptKind;
+  status: SmsDeliveryReceiptStatus;
+  /** @nullable */
+  messageId: string | null;
+  timestamp: string;
+}
+
+export interface TurnExecution {
+  path: string;
+  runtimeSessionId: string;
+  timestamp: string;
+  fallbackReason?: string;
+  modelProvider?: string;
+}
+
 export interface OrchestrationState {
   conversationId: string;
   currentChannel: string;
@@ -160,12 +193,16 @@ export interface OrchestrationState {
   modelLatencyMs: number | null;
   /** @nullable */
   modelFallbackReason: string | null;
+  executionPath?: string;
+  runtimeSessionId?: string;
+  turnHistory?: TurnExecution[];
 }
 
 export interface IntegrationReadiness {
   service: string;
   status: string;
   detail?: string;
+  invokedAt?: string;
 }
 
 export interface Dashboard {
@@ -174,6 +211,7 @@ export interface Dashboard {
   messages: ConversationMessage[];
   activities: Activity[];
   emailPreview?: ItineraryEmailPreview;
+  smsDeliveries?: SmsDeliveryReceipt[];
   /** @nullable */
   selectedAlternative: string | null;
   confirmationStatus: string;
@@ -254,6 +292,7 @@ export interface PendingRebookingResult {
 }
 
 export interface RebookResult {
+  smsDelivery?: SmsDeliveryReceipt;
   booking: Booking;
   actionStatus: string;
   message: string;

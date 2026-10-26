@@ -113,6 +113,17 @@ paths:
           description: Invalid interpretation request
         "404":
           description: Booking is not the active session booking
+  /demo/start:
+    post:
+      operationId: startDemo
+      tags: [SurgeAir]
+      summary: Send the current conversation's disruption SMS once
+      responses:
+        "200":
+          description: Current conversation with SMS delivery evidence
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dashboard" }
   /demo/reset:
     post:
       operationId: resetDemo
@@ -439,6 +450,9 @@ components:
           items: { $ref: "#/components/schemas/Activity" }
         emailPreview:
           $ref: "#/components/schemas/ItineraryEmailPreview"
+        smsDeliveries:
+          type: array
+          items: { $ref: "#/components/schemas/SmsDeliveryReceipt" }
         selectedAlternative:
           type: ["string", "null"]
         confirmationStatus: { type: string }
@@ -473,6 +487,28 @@ components:
         modelStatus: { type: string }
         modelLatencyMs: { type: ["integer", "null"] }
         modelFallbackReason: { type: ["string", "null"] }
+        executionPath: { type: string }
+        runtimeSessionId: { type: string }
+        turnHistory:
+          type: array
+          items: { $ref: "#/components/schemas/TurnExecution" }
+    TurnExecution:
+      type: object
+      required: [path, runtimeSessionId, timestamp]
+      properties:
+        path: { type: string }
+        runtimeSessionId: { type: string }
+        timestamp: { type: string }
+        fallbackReason: { type: string }
+        modelProvider: { type: string }
+    SmsDeliveryReceipt:
+      type: object
+      required: [kind, status, messageId, timestamp]
+      properties:
+        kind: { type: string, enum: [notification, confirmation] }
+        status: { type: string, enum: [sent, failed, simulated] }
+        messageId: { type: ["string", "null"] }
+        timestamp: { type: string }
     IntegrationReadiness:
       type: object
       required: [service, status]
@@ -480,6 +516,7 @@ components:
         service: { type: string }
         status: { type: string }
         detail: { type: string }
+        invokedAt: { type: string }
     SmsTestInput:
       type: object
       required: [message]
@@ -526,6 +563,8 @@ components:
       type: object
       required: [booking, actionStatus, message]
       properties:
+        smsDelivery:
+          $ref: "#/components/schemas/SmsDeliveryReceipt"
         booking: { $ref: "#/components/schemas/Booking" }
         actionStatus: { type: string }
         message: { type: string }

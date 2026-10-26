@@ -138,25 +138,16 @@ Provider abstractions keep channel behavior separate from the orchestration laye
 
 ## AWS Integration Readiness
 
-| Service | Status | Demo mode |
+| Service | Initial status when configured | Demo mode |
 | --- | --- | --- |
-| Amazon Bedrock | CONNECTED | Nova 2 Lite |
-| Bedrock AgentCore | CONNECTED | Live Runtime |
-| AWS End User Messaging SMS | CONNECTED | AWS Simulator |
-| Amazon SES | CONNECTED | Live Email |
+| Amazon Bedrock | CONFIGURED | Nova 2 Lite |
+| Bedrock AgentCore | CONFIGURED | Runtime ARN required |
+| AWS End User Messaging SMS | CONFIGURED | AWS Simulator |
+| Amazon SES | CONFIGURED | SES sandbox |
 | WhatsApp | SIMULATED | Demo Adapter |
 | RCS | SIMULATED | Demo Adapter |
 
-`CONNECTED` means that a genuine AWS runtime operation or verified runtime evidence is available for the integration. `SIMULATED` means that the application demonstrates the channel behavior locally without claiming a live channel operation.
-
-The published Replit deployment was validated with this readiness state:
-
-- Amazon Bedrock — **CONNECTED** — Nova 2 Lite • eu-north-1
-- Bedrock AgentCore — **CONNECTED** — Live Runtime
-- AWS End User Messaging SMS — **CONNECTED** — AWS Simulator • eu-north-1
-- Amazon SES — **CONNECTED** — Live Email • eu-north-1
-- WhatsApp — **SIMULATED**
-- RCS — **SIMULATED**
+Missing resource configuration displays `NOT INVOKED YET`. Only a successful call in this conversation produces `INVOKED` and its timestamp; failures display `ERROR`. Prior verification files do not set these conversation badges. `SIMULATED` means the selected adapter runs locally without claiming an AWS operation.
 
 SMS validation used the AWS SMS Simulator and does not claim delivery through a physical carrier.
 
@@ -504,10 +495,33 @@ These are boundaries of the current hackathon implementation:
 - WhatsApp is simulated.
 - RCS is simulated.
 - SMS uses the AWS Simulator rather than carrier delivery.
-- Readiness initializes from committed prior-verification evidence and uses a best-effort local JSON runtime overlay; Autoscale runtime files are not durable across restarts.
+- Integration Readiness uses evidence from the current conversation only. Historical verification does not mark a service invoked.
 - Conversation and event state use controlled in-memory demonstration data.
 - Airline inventory and booking records are controlled demonstration data.
 - No production airline reservation-system integration is claimed.
+
+## Notes for judges
+
+The browser retains the same demo booking sequence and presentation. The following describes the actual execution paths, not historical verification badges:
+
+| Component | Real call or simulation? |
+| --- | --- |
+| Disruption notification and booking confirmation SMS | The server calls AWS End User Messaging `SendTextMessage` using the configured simulator destination. AWS MessageIds are retained in the conversation and shown in SMS details and the operations log. This is simulator API acceptance, **not delivery to a physical handset**. Failures are displayed and do not stop booking. Other chat bubbles are locally rendered and do not send SMS. |
+| Passenger-message interpretation | Each user message, including confirmation/cancellation, goes through `InvokeAgentRuntime` when `AGENTCORE_RUNTIME_ARN` is configured. The runtime must run the interpretation-only protocol in `src/agentcore/app.ts`; its Bedrock model interprets the message without executing booking actions. The same runtime session ID is used within one conversation and is replaced on Reset Demo or passenger change. |
+| Direct Amazon Bedrock fallback | If AgentCore is missing, errors, times out, or returns an incompatible response, the server automatically calls the existing direct Bedrock `Converse` path. If Bedrock also fails, the existing local interpretation fallback is explicitly reported as local. Orchestration and per-turn logs identify the path and runtime session ID. |
+| Itinerary email | After successful rebooking, the server calls Amazon SES `SendEmail` using the configured sender and fixed sandbox recipient. The preview shows the actual email body, masked addresses, and the returned SES MessageId. Acceptance is not proof of inbox delivery. |
+| WhatsApp and RCS | Simulated channel views; no messages are sent to those networks. |
+| Flight disruption, alternative-flight inventory, booking updates, passenger scenarios | Local mock airline data and in-memory session state. No airline reservation system is contacted. |
+| Conversation bubbles and operations panel | Locally rendered UI reflecting server results. Bubbles alone are not transport-delivery evidence. |
+
+Integration Readiness starts at **Configured**, **Not invoked yet**, or **Simulated**. A service changes to **Invoked** with its first successful invocation timestamp in this conversation; reset clears that evidence. No badge is proof of a physical SMS or inbox delivery.
+
+### AgentCore and SMS prerequisites
+
+- Set `AGENTCORE_RUNTIME_ARN` to the existing runtime ARN. Runtime names alone cannot invoke a runtime. The API's IAM identity needs `bedrock-agentcore:InvokeAgentRuntime`; runtime discovery is not required.
+- Deploy the updated interpretation-only runtime (`pnpm --filter @workspace/api-server run build:agentcore`) to that ARN before enabling it. The runtime role must have Bedrock model access. Its model configuration uses the runtime's IAM role, never the Replit bearer token.
+- Configure `AWS_SMS_SIMULATOR_DESTINATION` and, where required by the simulator setup, `AWS_SMS_ORIGINATION_NUMBER`. Missing configuration or denied calls are reported as failures, never fabricated successes.
+- Actual AWS calls require the account's IAM permissions and resources. The repository alone cannot provision access, destinations, or runtime permissions. Invocation receipts and conversation state are in memory and are lost on server restart.
 
 ## Future Development
 

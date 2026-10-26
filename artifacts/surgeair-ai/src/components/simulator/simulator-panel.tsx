@@ -14,6 +14,7 @@ import {
   useSendItinerary,
   useInterpretMessage,
    useSelectConversationChannel,
+  useStartDemo,
   getGetDashboardQueryKey,
   getGetBookingQueryKey
 } from "@workspace/api-client-react";
@@ -37,6 +38,7 @@ import { uniqueSuggestedReplies } from "./suggested-replies";
 import { demoStatus, type DemoStatus } from "@/components/demo-presentation";
 import { confirmationSummary, itineraryDeliverySummary } from "./confirmation-summary";
 import { ItineraryEmail } from "./itinerary-email-preview";
+import { SmsDeliveryDetails } from "./sms-delivery-details";
 
 interface SimulatorPanelProps {
   dashboard: Dashboard;
@@ -59,6 +61,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
   const [activeChannel, setActiveChannel] = useState(dashboard.orchestration.currentChannel);
   const [channelError, setChannelError] = useState("");
   const [emailOpen, setEmailOpen] = useState(false);
+  const [smsDeliveries, setSmsDeliveries] = useState(dashboard.smsDeliveries ?? []);
   const [emailPreview, setEmailPreview] = useState<ItineraryEmailPreview | undefined>(dashboard.emailPreview);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   useEffect(() => {
@@ -116,6 +119,22 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
   const emailDelivered = wasItineraryEmailDelivered(dashboard.activities) || emailPreview?.provider === "amazon-ses";
   const visibleBooking = confirmedBooking ?? dashboard.booking;
   const lastAiIndex = messages.findLastIndex(message => message.sender !== "passenger");
+  const firstAiIndex = messages.findIndex(message => message.sender !== "passenger");
+  const startDemo = useStartDemo();
+  useEffect(() => {
+    let active = true;
+    startDemo.mutateAsync().then(result => {
+      if (!active) return;
+      setSmsDeliveries(result.smsDeliveries ?? []);
+      void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+    }).catch(() => {
+      if (active) setSmsDeliveries([{ kind: "notification", status: "failed", messageId: null, timestamp: new Date().toISOString() }]);
+    });
+    return () => { active = false; };
+  }, [startDemo.mutateAsync, queryClient]);
+  useEffect(() => {
+    if (dashboard.smsDeliveries) setSmsDeliveries(dashboard.smsDeliveries);
+  }, [dashboard.smsDeliveries]);
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 1000);
@@ -182,15 +201,22 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
     
     addMessage(userText, 'passenger');
     setIsTyping(true);
+    let decision: Awaited<ReturnType<typeof interpretMessage.mutateAsync>>;
+    try {
+      decision = await interpretMessage.mutateAsync({ data: {
+        text: userText,
+        bookingReference: dashboard.booking.bookingReference,
+        presentedFlightNumbers: showingOptions ? alternativeFlights.map(flight => flight.flightNumber) : [],
+      } });
+      await queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+    } catch {
+      addMessage("I couldn't interpret your message right now. Please try again.", "ai");
+      setIsTyping(false);
+      return;
+    }
 
     if (rebookSuccess || dashboard.actionStatus === "Rebooked") {
       try {
-        const decision = await interpretMessage.mutateAsync({
-          data: {
-            text: userText,
-            bookingReference: dashboard.booking.bookingReference,
-          },
-        });
         if (!decision.clarification) throw new Error("Completed booking response unavailable.");
         addMessage(decision.clarification, "ai");
       } catch {
@@ -214,6 +240,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
           });
 
           setConfirmedBooking(result.booking);
+          if (result.smsDelivery) setSmsDeliveries(previous => [...previous.filter(receipt => receipt.kind !== "confirmation"), result.smsDelivery!]);
           const confirmationId = addMessage(confirmationSummary(result.booking), 'ai');
            setAwaitingConfirmationFor(null);
            setShowingOptions(false);
@@ -258,13 +285,6 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
     try {
       // The existing backend model interprets the inbound message. Only validated,
       // session-grounded decisions can reach airline search or preparation tools.
-      const decision = await interpretMessage.mutateAsync({
-        data: {
-          text: userText,
-          bookingReference: dashboard.booking.bookingReference,
-          presentedFlightNumbers: showingOptions ? alternativeFlights.map(f => f.flightNumber) : [],
-        },
-      });
       if (decision.clarification) {
         addMessage(decision.clarification, "ai");
         return;
@@ -439,7 +459,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
                 className={`min-w-0 rounded-full border px-1 py-1 text-[9px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "border-primary bg-primary text-primary-foreground" : emailDelivered ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300" : "border-border bg-background text-foreground"}`}
                 data-testid="badge-channel-email"
                 aria-label={emailDelivered ? "Email itinerary sent via Amazon SES" : "Email itinerary delivery"}
-                title={emailDelivered ? "Itinerary delivered via Amazon SES" : "Itinerary delivery only"}
+                title={emailDelivered ? "Itinerary sent via Amazon SES" : "Itinerary delivery only"}
               >
                 Email{emailDelivered && <span className="block text-[7px] font-semibold">Sent</span>}
               </button>
@@ -515,11 +535,8 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
                 <span className={`text-[9px] text-muted-foreground font-semibold mt-1 px-8 ${isPassenger ? 'text-right' : 'text-left'}`}>
                   {displayTime(msg.timestamp)}
                 </span>
-                {!isPassenger && i === lastAiIndex && activeChannel === "SMS" && (
-                  <details className="mt-1 max-w-full px-8 text-[9px] leading-relaxed text-muted-foreground" data-testid="sms-delivery-detail">
-                    <summary className="cursor-pointer">SMS simulator delivery details</summary>
-                    <p>AWS End User Messaging SMS simulator. No provider delivery receipt or message ID was returned for this demo message.</p>
-                  </details>
+                {!isPassenger && activeChannel === "SMS" && (i === firstAiIndex || i === lastAiIndex) && (
+                  <SmsDeliveryDetails receipt={smsDeliveries.find(receipt => receipt.kind === (i === firstAiIndex ? "notification" : rebookSuccess ? "confirmation" : ""))} />
                 )}
               </div>
             );

@@ -568,6 +568,80 @@ export const useInterpretMessage = <TError = ErrorType<void>,
       return useMutation(getInterpretMessageMutationOptions(options));
     }
 
+export const getStartDemoUrl = () => {
+
+
+
+
+  return `/api/demo/start`
+}
+
+/**
+ * @summary Send the current conversation's disruption SMS once
+ */
+export const startDemo = async ( options?: Parameters<typeof customFetch>[1]): Promise<Dashboard> => {
+
+  return customFetch<Dashboard>(getStartDemoUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartDemoMutationKey = () => ['startDemo'] as const;
+
+export const getStartDemoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startDemo>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startDemo>>, TError,void, TContext> => {
+
+const mutationKey = getStartDemoMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startDemo>>, void> = () => {
+
+
+          return  startDemo(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartDemoMutationResult = NonNullable<Awaited<ReturnType<typeof startDemo>>>
+
+    export type StartDemoMutationError = ErrorType<unknown>
+
+
+    /**
+ * @summary Send the current conversation's disruption SMS once
+ */
+export const useStartDemo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startDemo>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startDemo>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getStartDemoMutationOptions(options));
+    }
+
 export const getResetDemoUrl = () => {
 
 

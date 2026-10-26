@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { TurnExecution } from './turnExecution';
 
 export interface OrchestrationState {
   conversationId: string;
@@ -25,4 +26,7 @@ export interface OrchestrationState {
   modelLatencyMs: number | null;
   /** @nullable */
   modelFallbackReason: string | null;
+  executionPath?: string;
+  runtimeSessionId?: string;
+  turnHistory?: TurnExecution[];
 }

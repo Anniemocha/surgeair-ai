@@ -74,6 +74,12 @@ export const GetDashboardResponse = zod.object({
   "messageId": zod.string().nullable(),
   "sentAt": zod.string()
 }).optional(),
+  "smsDeliveries": zod.array(zod.object({
+  "kind": zod.enum(['notification', 'confirmation']),
+  "status": zod.enum(['sent', 'failed', 'simulated']),
+  "messageId": zod.string().nullable(),
+  "timestamp": zod.string()
+})).optional(),
   "selectedAlternative": zod.string().nullable(),
   "confirmationStatus": zod.string(),
   "actionStatus": zod.string(),
@@ -89,12 +95,22 @@ export const GetDashboardResponse = zod.object({
   "region": zod.string().nullable(),
   "modelStatus": zod.string(),
   "modelLatencyMs": zod.number().int().nullable(),
-  "modelFallbackReason": zod.string().nullable()
+  "modelFallbackReason": zod.string().nullable(),
+  "executionPath": zod.string().optional(),
+  "runtimeSessionId": zod.string().optional(),
+  "turnHistory": zod.array(zod.object({
+  "path": zod.string(),
+  "runtimeSessionId": zod.string(),
+  "timestamp": zod.string(),
+  "fallbackReason": zod.string().optional(),
+  "modelProvider": zod.string().optional()
+})).optional()
 }),
   "integrationStatus": zod.array(zod.object({
   "service": zod.string(),
   "status": zod.string(),
-  "detail": zod.string().optional()
+  "detail": zod.string().optional(),
+  "invokedAt": zod.string().optional()
 }))
 })
 
@@ -180,6 +196,104 @@ export const InterpretMessageResponse = zod.object({
   "selectedFlight": zod.string().nullable(),
   "provider": zod.enum(['local', 'amazon-bedrock']),
   "clarification": zod.string().nullable()
+})
+
+
+/**
+ * @summary Send the current conversation's disruption SMS once
+ */
+export const StartDemoResponse = zod.object({
+  "booking": zod.object({
+  "bookingReference": zod.string(),
+  "passengerId": zod.string(),
+  "passengerName": zod.string(),
+  "currentFlight": zod.object({
+  "flightNumber": zod.string(),
+  "origin": zod.string(),
+  "destination": zod.string(),
+  "departure": zod.string(),
+  "arrival": zod.string(),
+  "status": zod.string(),
+  "delayMinutes": zod.number().int(),
+  "gate": zod.string().nullish(),
+  "aircraft": zod.string().nullish()
+}),
+  "origin": zod.string(),
+  "destination": zod.string(),
+  "status": zod.string().optional()
+}),
+  "disruption": zod.object({
+  "flightNumber": zod.string(),
+  "origin": zod.string(),
+  "destination": zod.string(),
+  "departure": zod.string(),
+  "arrival": zod.string(),
+  "status": zod.string(),
+  "delayMinutes": zod.number().int(),
+  "gate": zod.string().nullish(),
+  "aircraft": zod.string().nullish()
+}),
+  "messages": zod.array(zod.object({
+  "id": zod.string(),
+  "channel": zod.string(),
+  "sender": zod.string(),
+  "text": zod.string(),
+  "timestamp": zod.string()
+})),
+  "activities": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "detail": zod.string(),
+  "status": zod.string(),
+  "timestamp": zod.string()
+})),
+  "emailPreview": zod.object({
+  "from": zod.string(),
+  "to": zod.string(),
+  "subject": zod.string(),
+  "body": zod.string(),
+  "provider": zod.string(),
+  "messageId": zod.string().nullable(),
+  "sentAt": zod.string()
+}).optional(),
+  "smsDeliveries": zod.array(zod.object({
+  "kind": zod.enum(['notification', 'confirmation']),
+  "status": zod.enum(['sent', 'failed', 'simulated']),
+  "messageId": zod.string().nullable(),
+  "timestamp": zod.string()
+})).optional(),
+  "selectedAlternative": zod.string().nullable(),
+  "confirmationStatus": zod.string(),
+  "actionStatus": zod.string(),
+  "orchestration": zod.object({
+  "conversationId": zod.string(),
+  "currentChannel": zod.string(),
+  "previousChannel": zod.string().nullable(),
+  "currentIntent": zod.string().nullable(),
+  "currentAgentState": zod.string(),
+  "lastToolCalled": zod.string().nullable(),
+  "modelProvider": zod.string(),
+  "model": zod.string(),
+  "region": zod.string().nullable(),
+  "modelStatus": zod.string(),
+  "modelLatencyMs": zod.number().int().nullable(),
+  "modelFallbackReason": zod.string().nullable(),
+  "executionPath": zod.string().optional(),
+  "runtimeSessionId": zod.string().optional(),
+  "turnHistory": zod.array(zod.object({
+  "path": zod.string(),
+  "runtimeSessionId": zod.string(),
+  "timestamp": zod.string(),
+  "fallbackReason": zod.string().optional(),
+  "modelProvider": zod.string().optional()
+})).optional()
+}),
+  "integrationStatus": zod.array(zod.object({
+  "service": zod.string(),
+  "status": zod.string(),
+  "detail": zod.string().optional(),
+  "invokedAt": zod.string().optional()
+}))
 })
 
 
@@ -279,6 +393,12 @@ export const RebookFlightBody = zod.object({
 })
 
 export const RebookFlightResponse = zod.object({
+  "smsDelivery": zod.object({
+  "kind": zod.enum(['notification', 'confirmation']),
+  "status": zod.enum(['sent', 'failed', 'simulated']),
+  "messageId": zod.string().nullable(),
+  "timestamp": zod.string()
+}).optional(),
   "booking": zod.object({
   "bookingReference": zod.string(),
   "passengerId": zod.string(),

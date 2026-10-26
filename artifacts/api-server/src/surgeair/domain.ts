@@ -24,6 +24,11 @@ import {
 import { createModelProvider } from "../models/model-provider-factory";
 import { extractClearArrivalBefore } from "../models/model-provider";
 import { LocalOperationalLogger } from "../observability/operational-logger";
+import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { AgentCoreModelProvider, type TurnExecution } from "../models/agentcore-model-provider";
+import { SessionInvocations } from "../observability/session-invocations";
+import type { SmsDeliveryReceipt } from "@workspace/api-zod";
 import { JsonReadinessStateStore } from "../observability/readiness-state-store";
 import { MessageOrchestrator } from "../orchestration/message-orchestrator";
 import { resolve } from "node:path";
@@ -173,13 +178,26 @@ export function createCanonicalDemoState(reference = "SG4821") {
   return { booking, conversation, messages };
 }
 
-export function createSurgeAirStore() {
+export function createSurgeAirStore(dependencies: {
+  smsClient?: import("../channels/aws-sms-provider").AwsSmsClient;
+  model?: import("../models/model-provider").ModelProvider;
+  agentCoreClient?: import("../models/agentcore-model-provider").AgentCoreClient;
+  runtimeArn?: string;
+  smsSimulatorDestination?: string;
+} = {}) {
 const { booking, conversation, messages } = createCanonicalDemoState();
 
 let activeScenario = passengerScenarios[0]!;
 let conversationId = "conv-sg4821-disruption";
 // Display metadata only; no credentials or unmasked addresses leave the server.
 let emailPreview: ItineraryEmailPreview | undefined;
+let runtimeSessionId = randomUUID();
+let turnHistory: TurnExecution[] = [];
+let smsDeliveries: SmsDeliveryReceipt[] = [];
+let smsRequests = new Map<string, Promise<SmsDeliveryReceipt>>();
+let generation = 0;
+const invocationScope = new AsyncLocalStorage<number>();
+const sessionInvocations = new SessionInvocations();
 const awsReadinessConfig = getAwsReadinessConfig();
 const readinessStore = new JsonReadinessStateStore(
   resolve(process.cwd(), "data/integration-readiness.json"),
@@ -204,15 +222,47 @@ const operationalLogger = new LocalOperationalLogger({
     verifiedReadinessEvidence.agentCore?.status === "CONNECTED",
   store: readinessStore,
 });
-const smsChannel = new SmsChannel(operationalLogger, {
+const sessionLogger: import("../observability/operational-logger").OperationalLogger = {
+  record(type, metadata) {
+    operationalLogger.record(type, metadata);
+    const scope = invocationScope.getStore();
+    if (scope === undefined || scope === generation) sessionInvocations.record(type, metadata);
+  },
+};
+const directModel = dependencies.model ?? createModelProvider(sessionLogger);
+const runtimeArn = dependencies.runtimeArn ?? process.env.AGENTCORE_RUNTIME_ARN?.trim();
+const simulatorDestination = dependencies.smsSimulatorDestination ?? awsReadinessConfig.channels.sms.simulatorDestination ?? undefined;
+const model = directModel.provider === "amazon-bedrock" ? new AgentCoreModelProvider({
+  region: awsReadinessConfig.region,
+  runtimeArn,
+  client: dependencies.agentCoreClient,
+  sessionId: () => runtimeSessionId,
+  fallback: directModel,
+  logger: sessionLogger,
+  onTurn(turn) {
+    if (invocationScope.getStore() !== generation) return;
+    turnHistory.push(turn);
+    addActivity(`Turn handled via ${turn.path}`, `Runtime session ID: ${turn.runtimeSessionId}${turn.fallbackReason ? ` • ${turn.fallbackReason}` : ""}`);
+  },
+}) : directModel;
+function resetInvocationEvidence() {
+  generation++;
+  sessionInvocations.clear();
+  runtimeSessionId = randomUUID();
+  turnHistory = [];
+  smsDeliveries = [];
+  smsRequests = new Map();
+}
+const smsChannel = new SmsChannel(sessionLogger, {
   provider: awsReadinessConfig.channels.sms.provider,
   region: awsReadinessConfig.region,
   originationIdentity:
     awsReadinessConfig.channels.sms.originationIdentity ?? undefined,
   simulatorDestination:
-    awsReadinessConfig.channels.sms.simulatorDestination ?? undefined,
+    simulatorDestination,
+  client: dependencies.smsClient,
 });
-const emailChannel = new EmailChannel(operationalLogger, {
+const emailChannel = new EmailChannel(sessionLogger, {
   provider: awsReadinessConfig.channels.email.provider,
   region: awsReadinessConfig.region,
   fromEmail: awsReadinessConfig.channels.email.fromEmail ?? undefined,
@@ -238,7 +288,7 @@ const messageOrchestrator = new MessageOrchestrator(
     emailChannel,
   ],
   conversationRepository,
-  createModelProvider(operationalLogger),
+  model,
   eventStore,
   operationalLogger,
 );
@@ -453,6 +503,7 @@ const store = {
   },
 
   resetDemo() {
+    resetInvocationEvidence();
     emailPreview = undefined;
     activeScenario = passengerScenarios[0]!;
     conversationId = "conv-sg4821-disruption";
@@ -495,6 +546,7 @@ const store = {
   selectPassenger(reference: string) {
     const next = scenarioFor(reference);
     if (!next) return null;
+    resetInvocationEvidence();
     emailPreview = undefined;
     activeScenario = next;
     conversationId = `conv-${next.bookingReference.toLowerCase()}-disruption`;
@@ -545,15 +597,6 @@ const store = {
     presentedFlightNumbers: string[] = [],
   ) {
     if (reference.toUpperCase() !== booking.bookingReference) return null;
-    if (booking.status === "Rebooked") {
-      return {
-        intent: "unknown" as const,
-        arrivalBefore: null,
-        selectedFlight: null,
-        provider: "local" as const,
-        clarification: completedBookingReply(),
-      };
-    }
     const routeAlternatives = activeScenario.alternatives
       .filter(
         (flight) =>
@@ -570,7 +613,8 @@ const store = {
         searchedAlternatives.has(flightNumber) &&
         list.indexOf(flightNumber) === index,
       );
-    const interpretation = await messageOrchestrator.interpret(content, {
+    const turnGeneration = generation;
+    const interpretation = await invocationScope.run(turnGeneration, () => messageOrchestrator.interpret(content, {
       passengerName: booking.passengerName,
       bookingReference: booking.bookingReference,
       currentFlight: booking.currentFlight.flightNumber,
@@ -578,7 +622,17 @@ const store = {
       destination: booking.destination,
       disruptionStatus: booking.currentFlight.status,
       presentedAlternatives,
-    });
+      selectedFlight: conversation.selectedFlight,
+      confirmationStatus: conversation.confirmationStatus,
+    }));
+    if (turnGeneration !== generation) return null;
+    conversation.detectedIntent = interpretation.intent.replaceAll("_", " ");
+    const interpretedConversation = conversationRepository.get(conversationId)!;
+    conversationRepository.save({ ...interpretedConversation, detectedIntent: conversation.detectedIntent });
+    if (booking.status === "Rebooked") {
+      return { intent: "unknown" as const, arrivalBefore: null, selectedFlight: null,
+        provider: interpretation.provider, clarification: completedBookingReply() };
+    }
 
     const explicitFlight = content.toUpperCase().match(/\bSA\d{3}\b/)?.[0] ?? null;
     const acceptsPresentedOption =
@@ -635,7 +689,8 @@ const store = {
       appendEvent("BOOKING_RETRIEVED", conversation.currentChannel, {
         bookingReference: found.bookingReference,
       });
-      syncConversation("getBooking", "Booking retrieved");
+      const state = conversationRepository.get(conversationId)?.currentAgentState;
+      syncConversation("getBooking", !state || state === "Disruption detected" ? "Booking retrieved" : state);
     }
     return found;
   },
@@ -860,8 +915,10 @@ const store = {
       "",
       "Thank you for flying with SurgeAir. Safe travels!",
     ].join("\n");
-    const delivery = await emailChannel.sendItinerary(subject, body);
-    emailPreview = {
+    const sendGeneration = generation;
+    const referenceAtSend = booking.bookingReference;
+    const delivery = await invocationScope.run(sendGeneration, () => emailChannel.sendItinerary(subject, body));
+    const preview: ItineraryEmailPreview = {
       from: maskEmailAddress(awsReadinessConfig.channels.email.fromEmail ?? ""),
       to: maskEmailAddress(delivery.destination),
       subject,
@@ -870,16 +927,19 @@ const store = {
       messageId: delivery.messageId,
       sentAt: new Date().toISOString(),
     };
-    this.markItinerarySent("Email", delivery.provider === "amazon-ses");
+    if (sendGeneration === generation) {
+      emailPreview = preview;
+      this.markItinerarySent("Email", delivery.provider === "amazon-ses");
+    }
     return {
       sent: delivery.success,
       channel: "Email",
       message:
         delivery.provider === "amazon-ses"
-          ? `Updated itinerary for ${booking.bookingReference} accepted by Amazon SES.`
-          : `Updated itinerary for ${booking.bookingReference} simulated successfully.`,
-      sentAt: new Date().toISOString(),
-      emailPreview,
+          ? `Updated itinerary for ${referenceAtSend} accepted by Amazon SES.`
+          : `Updated itinerary for ${referenceAtSend} simulated successfully.`,
+      sentAt: preview.sentAt,
+      emailPreview: preview,
     };
   },
 
@@ -889,7 +949,7 @@ const store = {
       `Itinerary for ${booking.currentFlight.flightNumber}`,
     );
     addActivity(
-      liveEmail ? "Email delivered via Amazon SES" : "Email delivery simulated",
+      liveEmail ? "Email sent via Amazon SES" : "Email delivery simulated",
       booking.bookingReference,
     );
     appendEvent("ITINERARY_GENERATED", "Email", {
@@ -908,6 +968,38 @@ const store = {
 
   getSmsProviderMode() {
     return awsReadinessConfig.channels.sms.provider;
+  },
+
+  sendDemoSms(kind: "notification" | "confirmation"): Promise<SmsDeliveryReceipt> {
+    if (smsRequests.has(kind)) return smsRequests.get(kind)!;
+    if (kind === "confirmation" && booking.status !== "Rebooked") {
+      return Promise.reject(new Error("A confirmed booking is required."));
+    }
+    const currentDeliveries = smsDeliveries;
+    const text = kind === "notification"
+      ? createCanonicalDemoState(booking.bookingReference).messages[0]!.text
+      : `Confirmed: ${booking.currentFlight.flightNumber}, ${booking.origin} ${booking.currentFlight.departure} to ${booking.destination} ${booking.currentFlight.arrival}. Booking reference ${booking.bookingReference}.`;
+    const request = invocationScope.run(generation, async () => {
+      let receipt: SmsDeliveryReceipt;
+      try {
+        if (!smsChannel.isAwsSelected()) {
+          receipt = { kind, status: "simulated", messageId: null, timestamp: new Date().toISOString() };
+        } else {
+          const result = await smsChannel.sendSimulatorTest(text);
+          receipt = { kind, status: "sent", messageId: result.messageId, timestamp: result.timestamp };
+        }
+      } catch {
+        receipt = { kind, status: "failed", messageId: null, timestamp: new Date().toISOString() };
+      }
+      if (currentDeliveries === smsDeliveries) {
+        currentDeliveries.push(receipt);
+        addActivity(receipt.status === "sent" ? "SMS sent via AWS End User Messaging" : receipt.status === "failed" ? "SMS simulator call failed" : "SMS delivery simulated",
+          receipt.status === "sent" ? `SMS sent via AWS End User Messaging, ID: ${receipt.messageId ?? "not returned"}` : `${kind} • ${receipt.status}`);
+      }
+      return receipt;
+    });
+    smsRequests.set(kind, request);
+    return request;
   },
 
   sendSmsSimulatorTest(message: string) {
@@ -937,6 +1029,7 @@ const store = {
       messages: stored.messages,
       activities,
       ...(emailPreview ? { emailPreview } : {}),
+      smsDeliveries,
       selectedAlternative: conversation.selectedFlight,
       confirmationStatus: conversation.confirmationStatus,
       actionStatus: conversation.rebookingStatus,
@@ -950,64 +1043,23 @@ const store = {
         modelProvider: modelExecution.provider,
         model: modelExecution.model,
         region: modelExecution.region,
-        modelStatus: modelExecution.status,
+        modelStatus: !turnHistory.length && directModel.provider === "amazon-bedrock" ? "not-invoked" : modelExecution.status,
         modelLatencyMs: modelExecution.latencyMs,
         modelFallbackReason: modelExecution.fallbackReason,
+        executionPath: turnHistory.at(-1)?.path ?? "Not invoked yet",
+        runtimeSessionId,
+        turnHistory,
       },
-      integrationStatus: integrationReadiness.map((integration) =>
-        integration.service === "Amazon Bedrock"
-          ? {
-              ...integration,
-              status: operationalLogger.getBedrockVerificationStatus(),
-              ...(operationalLogger.getBedrockVerificationStatus() ===
-              "CONNECTED"
-                ? {
-                    detail: `${modelExecution.model} • ${awsReadinessConfig.region}`,
-                  }
-                : {}),
-            }
-          : integration.service === "Bedrock AgentCore"
-            ? {
-                ...integration,
-                status: operationalLogger.getAgentCoreVerificationStatus(),
-                ...(operationalLogger.getAgentCoreVerificationStatus() ===
-                "CONNECTED"
-                  ? {
-                      detail: awsReadinessConfig.agentCoreRuntimeName
-                        ? `Runtime: ${awsReadinessConfig.agentCoreRuntimeName} • Live Runtime`
-                        : "Live Runtime",
-                    }
-                  : {}),
-              }
-          : integration.service === "AWS End User Messaging SMS"
-            ? {
-                ...integration,
-                status:
-                  awsReadinessConfig.channels.sms.provider === "simulated"
-                    ? "SIMULATED"
-                    : operationalLogger.getSmsVerificationStatus(),
-                ...(awsReadinessConfig.channels.sms.simulatorDestination
-                  ? {
-                      detail: `AWS Simulator • ${awsReadinessConfig.region}`,
-                    }
-                  : {}),
-              }
-            : integration.service === "Amazon SES"
-              ? {
-                  ...integration,
-                  status:
-                    awsReadinessConfig.channels.email.provider === "simulated"
-                      ? "SIMULATED"
-                      : operationalLogger.getSesVerificationStatus(),
-                  ...(operationalLogger.getSesVerificationStatus() ===
-                  "CONNECTED"
-                    ? {
-                        detail: `Live Email • ${awsReadinessConfig.region}`,
-                      }
-                    : {}),
-                }
-            : integration,
-      ),
+      integrationStatus: integrationReadiness.map(({ service }) => {
+        const simulated = /WhatsApp|RCS/.test(service)
+          || (service === "Amazon SES" && awsReadinessConfig.channels.email.provider === "simulated")
+          || (service === "AWS End User Messaging SMS" && awsReadinessConfig.channels.sms.provider === "simulated");
+        const configured = service === "Amazon Bedrock" ? directModel.provider === "amazon-bedrock"
+          : service === "Bedrock AgentCore" ? !!runtimeArn
+          : service === "Amazon SES" ? !!awsReadinessConfig.channels.email.fromEmail && !!awsReadinessConfig.channels.email.testDestination
+          : service === "AWS End User Messaging SMS" ? !!simulatorDestination : false;
+        return sessionInvocations.readiness(service, configured, simulated);
+      }),
     };
   },
 };

@@ -33,6 +33,8 @@ function providerLabel(provider: string) {
 
 function modelStatusLabel(status: string) {
   switch (status) {
+    case "not-invoked":
+      return "Not invoked yet";
     case "connected":
       return "Connected / Successful";
     case "fallback":
@@ -65,6 +67,7 @@ function airportCity(code: string) {
 function readinessStyle(status: string) {
   switch (status.toUpperCase()) {
     case "CONNECTED":
+    case "INVOKED":
       return {
         icon: "text-emerald-600 dark:text-emerald-500",
         card: "bg-emerald-50/50 border-emerald-100 dark:bg-emerald-950/10 dark:border-emerald-900/30",
@@ -305,6 +308,11 @@ export function DashboardPanel({ dashboard, headerAction, displayStatus }: Dashb
                   )}
                 </div>
 
+                <div className="space-y-1 col-span-2">
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold">Turn execution</p>
+                  <p className="text-[11px] font-medium" data-testid="text-execution-path">{orchestration.executionPath ?? "Not invoked yet"}</p>
+                  {orchestration.runtimeSessionId && <p className="break-all font-mono text-[9px] text-muted-foreground" data-testid="text-runtime-session">Session: {orchestration.runtimeSessionId}</p>}
+                </div>
                  <div className="col-span-2 md:col-span-4 pt-2 mt-1 border-t border-border/30 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 opacity-75">
                    <div className="space-y-0.5">
                      <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold">Provider</p>
@@ -354,7 +362,7 @@ export function DashboardPanel({ dashboard, headerAction, displayStatus }: Dashb
               <div className="grid grid-cols-2 gap-3">
                 {integrationStatus.map((integration, idx) => {
                    const style = readinessStyle(integration.status);
-                   const isConnected = integration.status.toUpperCase() === "CONNECTED";
+                   const isConnected = ["CONNECTED", "INVOKED"].includes(integration.status.toUpperCase());
                   return (
                     <div
                       key={idx}
@@ -374,6 +382,7 @@ export function DashboardPanel({ dashboard, headerAction, displayStatus }: Dashb
                        <span className={`text-[9px] uppercase tracking-wider font-bold pl-5 ${style.text}`}>
                          {integration.status}
                       </span>
+                       {integration.invokedAt && <span className="pl-5 text-[10px] text-muted-foreground" title={integration.invokedAt}>First invoked {displayTime(integration.invokedAt)}</span>}
                        {integration.service === "AWS End User Messaging SMS" ? (
                          <span className="pl-5 text-[10px] leading-tight text-muted-foreground" title={integration.detail ?? undefined}>
                            AWS SMS Simulator

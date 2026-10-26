@@ -6,8 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Booking } from './booking';
+import type { SmsDeliveryReceipt } from './smsDeliveryReceipt';
 
 export interface RebookResult {
+  smsDelivery?: SmsDeliveryReceipt;
   booking: Booking;
   actionStatus: string;
   message: string;

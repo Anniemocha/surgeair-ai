@@ -15,7 +15,7 @@ export interface AwsSmsDeliveryResult {
 }
 
 export interface AwsSmsClient {
-  send(command: SendTextMessageCommand): Promise<SendTextMessageCommandOutput>;
+  send(command: SendTextMessageCommand, options?: { abortSignal?: AbortSignal }): Promise<SendTextMessageCommandOutput>;
 }
 
 export interface AwsSmsProviderOptions {
@@ -95,7 +95,7 @@ export class AwsSmsProvider {
           ...(this.originationIdentity
             ? { OriginationIdentity: this.originationIdentity }
             : {}),
-        }),
+        }), { abortSignal: AbortSignal.timeout(8_000) },
       );
       const timestamp = new Date().toISOString();
       this.logger.record("sms_send_succeeded", {

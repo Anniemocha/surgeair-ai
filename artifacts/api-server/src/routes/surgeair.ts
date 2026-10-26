@@ -55,6 +55,14 @@ const emailTestRateLimiter = new SmsTestRateLimiter(
 router.get("/dashboard", (_req, res) => {
   res.json(GetDashboardResponse.parse(_req.surgeAirStore.getDashboard()));
 });
+router.post("/demo/start", async (req, res) => {
+  if (!isSameOriginRequest(req)) {
+    res.status(403).json({ error: "Cross-site demo requests are not allowed." });
+    return;
+  }
+  await req.surgeAirStore.sendDemoSms("notification");
+  res.json(GetDashboardResponse.parse(req.surgeAirStore.getDashboard()));
+});
 
 router.get("/passengers", (req, res) => {
   res.json(ListPassengersResponse.parse(req.surgeAirStore.listPassengers()));
@@ -170,6 +178,10 @@ router.get("/flights/:flightNumber/status", async (req, res) => {
 });
 
 router.post("/bookings/rebook", async (req, res) => {
+  if (!isSameOriginRequest(req)) {
+    res.status(403).json({ error: "Cross-site booking requests are not allowed." });
+    return;
+  }
   const input = RebookFlightBody.parse(req.body);
   const result = await createAirlineTools(req.surgeAirStore).execute<
     ReturnType<SurgeAirStore["rebook"]>
@@ -181,7 +193,8 @@ router.post("/bookings/rebook", async (req, res) => {
     return;
   }
 
-  res.json(RebookFlightResponse.parse(result));
+  const smsDelivery = await req.surgeAirStore.sendDemoSms("confirmation");
+  res.json(RebookFlightResponse.parse({ ...result, smsDelivery }));
 });
 
 router.post("/bookings/rebook/prepare", async (req, res) => {

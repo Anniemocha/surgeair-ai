@@ -102,12 +102,7 @@ function ResetDemoControl({
 export function Home() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [theme, setTheme] = useState<Theme>(() => {
-    try {
-      const saved = localStorage.getItem("surgeair-theme");
-      return saved === "dark" || saved === "eye-care" ? saved : "light";
-    } catch { return "light"; }
-  });
+  const [theme, setTheme] = useState<Theme>("light");
   const [resetVersion, setResetVersion] = useState(0);
   const [switching, setSwitching] = useState(false);
   const [startedAt, setStartedAt] = useState(() => new Date().toISOString());
@@ -129,10 +124,15 @@ export function Home() {
   const selectPassenger = useSelectPassenger();
 
   useEffect(() => {
+    // Remove legacy preferences without restoring or saving an appearance choice.
+    try { localStorage.removeItem("surgeair-theme"); } catch { /* storage can be unavailable */ }
+    try { sessionStorage.removeItem("surgeair-theme"); } catch { /* storage can be unavailable */ }
+  }, []);
+
+  useEffect(() => {
     document.documentElement.classList.remove("light", "dark", "eye-care");
     document.documentElement.classList.add(theme);
     document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem("surgeair-theme", theme); } catch { /* storage can be unavailable */ }
   }, [theme]);
 
   const refreshScenario = async () => {
@@ -162,6 +162,7 @@ export function Home() {
 
   const handleReset = async () => {
     if (!dashboard) return;
+    setTheme("light");
 
     try {
       await resetDemo.mutateAsync();

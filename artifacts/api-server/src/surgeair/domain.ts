@@ -180,6 +180,7 @@ export function createCanonicalDemoState(reference = "SG4821") {
 
 export function createSurgeAirStore(dependencies: {
   smsClient?: import("../channels/aws-sms-provider").AwsSmsClient;
+  emailClient?: import("../channels/aws-ses-provider").AwsSesClient;
   model?: import("../models/model-provider").ModelProvider;
   agentCoreClient?: import("../models/agentcore-model-provider").AgentCoreClient;
   runtimeArn?: string;
@@ -196,6 +197,10 @@ let turnHistory: TurnExecution[] = [];
 let smsDeliveries: SmsDeliveryReceipt[] = [];
 let smsRequests = new Map<string, Promise<SmsDeliveryReceipt>>();
 let generation = 0;
+let passengerInteracted = false;
+let modelAttempted = false;
+let lastInterpretationProvider: string | null = null;
+let pendingEmail: { generation: number; promise: Promise<Awaited<ReturnType<typeof emailChannel.sendItinerary>>> } | undefined;
 const invocationScope = new AsyncLocalStorage<number>();
 const sessionInvocations = new SessionInvocations();
 const awsReadinessConfig = getAwsReadinessConfig();
@@ -247,6 +252,9 @@ const model = directModel.provider === "amazon-bedrock" ? new AgentCoreModelProv
 }) : directModel;
 function resetInvocationEvidence() {
   generation++;
+  passengerInteracted = false;
+  modelAttempted = false;
+  lastInterpretationProvider = null;
   sessionInvocations.clear();
   runtimeSessionId = randomUUID();
   turnHistory = [];
@@ -263,6 +271,7 @@ const smsChannel = new SmsChannel(sessionLogger, {
   client: dependencies.smsClient,
 });
 const emailChannel = new EmailChannel(sessionLogger, {
+  client: dependencies.emailClient,
   provider: awsReadinessConfig.channels.email.provider,
   region: awsReadinessConfig.region,
   fromEmail: awsReadinessConfig.channels.email.fromEmail ?? undefined,
@@ -304,14 +313,7 @@ function canonicalActivities(): ActivityRecord[] {
         ? "SA204 delayed by 3 hours"
         : `${activeScenario.originalFlight.flightNumber}: ${activeScenario.disruptionReason}`,
       status: "COMPLETED",
-      timestamp: "10:02",
-    },
-    {
-      id: "activity-2",
-      label: "Passenger notified",
-      detail: `SMS sent to ${activeScenario.passengerName}`,
-      status: "COMPLETED",
-      timestamp: "10:03",
+      timestamp: new Date().toISOString(),
     },
   ];
 }
@@ -331,15 +333,6 @@ function canonicalEvents(
         flightNumber: activeScenario.originalFlight.flightNumber,
         delayMinutes: activeScenario.originalFlight.delayMinutes,
       },
-    },
-    {
-      eventId: "evt-2",
-      conversationId,
-      passengerId: sourceBooking.passengerId,
-      eventType: "PASSENGER_NOTIFIED",
-      channel: "sms",
-      timestamp: new Date().toISOString(),
-      metadata: { bookingReference: sourceBooking.bookingReference },
     },
   ];
 }
@@ -377,21 +370,13 @@ eventStore.append({
     delayMinutes: activeScenario.originalFlight.delayMinutes,
   },
 });
-eventStore.append({
-  conversationId,
-  passengerId: booking.passengerId,
-  eventType: "PASSENGER_NOTIFIED",
-  channel: "sms",
-  metadata: { bookingReference: booking.bookingReference },
-});
-
 function minutes(time: string): number {
   const [hours = "0", mins = "0"] = time.split(":");
   return Number(hours) * 60 + Number(mins);
 }
 
 function completedBookingReply(): string {
-  return `Your booking has already been updated to ${booking.currentFlight.flightNumber}.`;
+  return `Your booking ${booking.currentFlight.flightNumber} is already confirmed.`;
 }
 
 function addActivity(label: string, detail: string) {
@@ -450,6 +435,7 @@ function syncConversation(lastToolCalled: string | null, currentAgentState: stri
 }
 
 const store = {
+  beginPassengerTurn() { passengerInteracted = true; },
   captureState(): DemoStateSnapshot {
     return {
       booking: {
@@ -586,6 +572,8 @@ const store = {
       timestamp: new Date().toISOString(),
     });
     const stored = conversationRepository.get(conversationId)!;
+    addActivityOnce("Passenger identified", booking.passengerName);
+    addActivityOnce("Booking retrieved", booking.bookingReference);
     conversation.currentChannel = stored.currentChannel;
     conversation.previousChannel = stored.previousChannel;
     return result;
@@ -597,6 +585,9 @@ const store = {
     presentedFlightNumbers: string[] = [],
   ) {
     if (reference.toUpperCase() !== booking.bookingReference) return null;
+    if (content.trim().length > 300 || !content.trim() || /[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(content)) {
+      throw new Error("Invalid passenger message.");
+    }
     const routeAlternatives = activeScenario.alternatives
       .filter(
         (flight) =>
@@ -614,6 +605,7 @@ const store = {
         list.indexOf(flightNumber) === index,
       );
     const turnGeneration = generation;
+    modelAttempted = true;
     const interpretation = await invocationScope.run(turnGeneration, () => messageOrchestrator.interpret(content, {
       passengerName: booking.passengerName,
       bookingReference: booking.bookingReference,
@@ -626,12 +618,24 @@ const store = {
       confirmationStatus: conversation.confirmationStatus,
     }));
     if (turnGeneration !== generation) return null;
-    conversation.detectedIntent = interpretation.intent.replaceAll("_", " ");
-    const interpretedConversation = conversationRepository.get(conversationId)!;
-    conversationRepository.save({ ...interpretedConversation, detectedIntent: conversation.detectedIntent });
+    lastInterpretationProvider = interpretation.provider;
     if (booking.status === "Rebooked") {
       return { intent: "unknown" as const, arrivalBefore: null, selectedFlight: null,
         provider: interpretation.provider, clarification: completedBookingReply() };
+    }
+    conversation.detectedIntent = interpretation.intent.replaceAll("_", " ");
+    const interpretedConversation = conversationRepository.get(conversationId)!;
+    conversationRepository.save({ ...interpretedConversation, detectedIntent: conversation.detectedIntent });
+    if (/^(?:no(?:,\s*cancel)?|cancel)(?:[!.,\s]|$)/i.test(content.trim()) &&
+      conversation.confirmationStatus === "Awaiting passenger confirmation") {
+      conversation.selectedFlight = null;
+      conversation.confirmationStatus = "Cancelled";
+      conversation.detectedIntent = "Cancel rebooking";
+      syncConversation(null, "Rebooking cancelled");
+      addActivity("Rebooking cancelled", "Booking unchanged; passenger may choose another option.");
+      return { intent: "cancel_rebooking", arrivalBefore: null, selectedFlight: null,
+        provider: interpretation.provider,
+        clarification: "No problem, I haven't changed your booking. Want to see other options?" };
     }
 
     const explicitFlight = content.toUpperCase().match(/\bSA\d{3}\b/)?.[0] ?? null;
@@ -677,10 +681,10 @@ const store = {
     };
   },
 
-  getBooking(reference: string) {
+  getBooking(reference: string, record = true) {
     const found =
       reference.toUpperCase() === booking.bookingReference ? booking : null;
-    if (found) {
+    if (found && passengerInteracted && record) {
       addActivityOnce("Passenger identified", found.passengerName);
       addActivityOnce(
         "Booking retrieved",
@@ -861,10 +865,11 @@ const store = {
     );
     addActivity("Explicit confirmation received", target.flightNumber);
     addActivity(
-      "Booking updated",
+      "Booking confirmed",
       `${previousFlight} changed to ${target.flightNumber}`,
     );
-    syncConversation("rebookFlight", "Rebooking completed");
+    conversation.detectedIntent = "Confirm rebooking";
+    syncConversation("rebookFlight", "Booking confirmed");
 
     return {
       booking,
@@ -895,6 +900,14 @@ const store = {
       this.markItinerarySent(channel, false);
       return simulated;
     }
+    if (emailPreview) {
+      return {
+        sent: true, channel: "Email",
+        message: `Updated itinerary for ${booking.bookingReference} already sent.`,
+        sentAt: emailPreview.sentAt,
+        emailPreview,
+      };
+    }
 
     const subject = `SurgeAir — Updated itinerary for ${booking.bookingReference}`;
     const body = [
@@ -917,7 +930,17 @@ const store = {
     ].join("\n");
     const sendGeneration = generation;
     const referenceAtSend = booking.bookingReference;
-    const delivery = await invocationScope.run(sendGeneration, () => emailChannel.sendItinerary(subject, body));
+    if (!pendingEmail || pendingEmail.generation !== sendGeneration) {
+      pendingEmail = { generation: sendGeneration,
+        promise: invocationScope.run(sendGeneration, () => emailChannel.sendItinerary(subject, body)) };
+    }
+    const pending = pendingEmail;
+    let delivery: Awaited<typeof pending.promise>;
+    try { delivery = await pending.promise; }
+    catch (error) {
+      if (pendingEmail === pending) pendingEmail = undefined;
+      throw error;
+    }
     const preview: ItineraryEmailPreview = {
       from: maskEmailAddress(awsReadinessConfig.channels.email.fromEmail ?? ""),
       to: maskEmailAddress(delivery.destination),
@@ -927,7 +950,7 @@ const store = {
       messageId: delivery.messageId,
       sentAt: new Date().toISOString(),
     };
-    if (sendGeneration === generation) {
+    if (sendGeneration === generation && !emailPreview) {
       emailPreview = preview;
       this.markItinerarySent("Email", delivery.provider === "amazon-ses");
     }
@@ -963,14 +986,38 @@ const store = {
       "SurgeAir AI",
       `Your updated itinerary for ${booking.currentFlight.flightNumber} has been sent.`,
     );
-    syncConversation("sendItinerary", "Itinerary sent");
+    syncConversation("sendItinerary", "Email sent");
   },
 
   getSmsProviderMode() {
     return awsReadinessConfig.channels.sms.provider;
   },
 
-  sendDemoSms(kind: "notification" | "confirmation"): Promise<SmsDeliveryReceipt> {
+  recordToolCall(name: string, input: unknown, output: unknown) {
+    if (name === "getBooking" && !passengerInteracted) return;
+    const aliases: Record<string, string> = {
+      getBooking: "getBooking", searchAlternativeFlights: "searchAlternatives",
+      rebookFlight: "bookFlight", sendItinerary: "sendEmail",
+    };
+    if (!aliases[name]) return;
+    const patterns: Record<string, RegExp> = {
+      bookingReference: /^SG\d{4}$/, newFlight: /^SA\d{3}$/,
+      origin: /^[A-Z]{3}$/, destination: /^[A-Z]{3}$/,
+      arrivalBefore: /^\d{2}:\d{2}$/, channel: /^(Email|SMS|WhatsApp|RCS)$/i,
+    };
+    const entries = input && typeof input === "object" ? Object.entries(input) : [];
+    const summary = entries.filter(([key]) => patterns[key]).map(([key, value]) =>
+      `${key}=${patterns[key]!.test(String(value)) ? String(value) : "[invalid]"}`).join(", ");
+    const result = output as { error?: unknown; booking?: BookingRecord; sent?: boolean } | null;
+    const out = Array.isArray(output) ? `${output.length} alternatives returned`
+      : !result ? "Not found" : result.error ? "Not completed"
+      : result.booking ? `Booking on ${result.booking.currentFlight.flightNumber}`
+      : result.sent !== undefined ? (result.sent ? "Itinerary accepted; preview available" : "Not sent")
+      : "Booking retrieved";
+    addActivity(`Tool call: ${aliases[name]}`, `Input: ${summary || "active booking"} → Output: ${out}`);
+  },
+
+  sendDemoSms(kind: "notification" | "confirmation", permission: boolean | (() => Promise<boolean>) = true): Promise<SmsDeliveryReceipt> {
     if (smsRequests.has(kind)) return smsRequests.get(kind)!;
     if (kind === "confirmation" && booking.status !== "Rebooked") {
       return Promise.reject(new Error("A confirmed booking is required."));
@@ -980,9 +1027,12 @@ const store = {
       ? createCanonicalDemoState(booking.bookingReference).messages[0]!.text
       : `Confirmed: ${booking.currentFlight.flightNumber}, ${booking.origin} ${booking.currentFlight.departure} to ${booking.destination} ${booking.currentFlight.arrival}. Booking reference ${booking.bookingReference}.`;
     const request = invocationScope.run(generation, async () => {
+      const allowed = typeof permission === "function" ? await permission() : permission;
       let receipt: SmsDeliveryReceipt;
       try {
-        if (!smsChannel.isAwsSelected()) {
+        if (!allowed) {
+          receipt = { kind, status: "skipped", messageId: null, timestamp: new Date().toISOString() };
+        } else if (!smsChannel.isAwsSelected()) {
           receipt = { kind, status: "simulated", messageId: null, timestamp: new Date().toISOString() };
         } else {
           const result = await smsChannel.sendSimulatorTest(text);
@@ -993,6 +1043,12 @@ const store = {
       }
       if (currentDeliveries === smsDeliveries) {
         currentDeliveries.push(receipt);
+        if (kind === "notification") {
+          addActivityOnce("Passenger notified", allowed ? "Disruption shown in the SMS thread." : "Disruption shown in the SMS thread; SMS skipped: demo limit");
+          appendEvent("PASSENGER_NOTIFIED", conversation.currentChannel, { bookingReference: booking.bookingReference });
+        }
+        if (!allowed) addActivity("SMS skipped: demo limit", kind);
+        else
         addActivity(receipt.status === "sent" ? "SMS sent via AWS End User Messaging" : receipt.status === "failed" ? "SMS simulator call failed" : "SMS delivery simulated",
           receipt.status === "sent" ? `SMS sent via AWS End User Messaging, ID: ${receipt.messageId ?? "not returned"}` : `${kind} • ${receipt.status}`);
       }
@@ -1022,7 +1078,13 @@ const store = {
     if (!stored) {
       throw new Error("Demo conversation is unavailable.");
     }
-    const modelExecution = operationalLogger.getLatestModelExecution();
+    const modelExecution = modelAttempted && lastInterpretationProvider === "local" ? {
+      provider: "local", model: "Local model (simulated)", region: null,
+      status: "local", latencyMs: null, fallbackReason: null,
+    } : modelAttempted ? operationalLogger.getLatestModelExecution() : {
+      provider: directModel.provider, model: "Not invoked yet", region: null,
+      status: "Not invoked yet", latencyMs: null, fallbackReason: null,
+    };
     return {
       booking,
       disruption: activeScenario.originalFlight,
@@ -1043,12 +1105,17 @@ const store = {
         modelProvider: modelExecution.provider,
         model: modelExecution.model,
         region: modelExecution.region,
-        modelStatus: !turnHistory.length && directModel.provider === "amazon-bedrock" ? "not-invoked" : modelExecution.status,
+        modelStatus: modelExecution.status,
         modelLatencyMs: modelExecution.latencyMs,
-        modelFallbackReason: modelExecution.fallbackReason,
-        executionPath: turnHistory.at(-1)?.path ?? "Not invoked yet",
+        modelFallbackReason: modelExecution.fallbackReason ? "The configured model path was unavailable; the fallback handled this request." : null,
+        executionPath: turnHistory.at(-1)?.path ?? (lastInterpretationProvider === "local"
+          ? "Local model (simulated)" : lastInterpretationProvider === "amazon-bedrock"
+            ? "Direct Bedrock fallback" : "Not invoked yet"),
         runtimeSessionId,
-        turnHistory,
+        turnHistory: turnHistory.map(turn => ({ ...turn,
+          ...(turn.fallbackError ? { fallbackError: "AgentCore runtime unavailable; direct Bedrock fallback was attempted." } : {}),
+          ...(turn.fallbackReason ? { fallbackReason: "AgentCore runtime unavailable; direct Bedrock fallback was attempted." } : {}),
+        })),
       },
       integrationStatus: integrationReadiness.map(({ service }) => {
         const simulated = /WhatsApp|RCS/.test(service)

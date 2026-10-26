@@ -10,6 +10,7 @@ export function SmsDeliveryDetails({ receipt }: { receipt?: SmsDeliveryReceipt }
         <p className="break-all">Message ID: {receipt.messageId ?? "Not returned by AWS"}</p>
         <p>{receipt.timestamp}</p>
       </> : receipt?.status === "failed" ? <p>SMS simulator call failed</p>
+        : receipt?.status === "skipped" ? <p>SMS skipped: demo limit. AWS was not called.</p>
         : receipt?.status === "simulated" ? <p>SMS delivery simulated; AWS was not called.</p>
         : <p>No SMS was sent for this chat bubble. Only the disruption notification and booking confirmation trigger AWS simulator calls.</p>}
     </details>

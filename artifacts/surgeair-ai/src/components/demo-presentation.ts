@@ -13,7 +13,7 @@ export function demoStatus(state: {
   emailDelivered?: boolean;
   cancelled?: boolean;
 }): DemoStatus {
-  if (state.confirmed && state.emailDelivered) return "Rebooked";
+  if (state.confirmed) return "Rebooked";
   if (state.cancelled && !state.confirmed) return "Rebooking cancelled";
   if (state.optionsShown || state.selected || state.confirmed) return "Rebooking in progress";
   return state.notified ? "Awaiting passenger reply" : "Not started";

@@ -9,7 +9,7 @@
 export interface MessageInterpretationInput {
   /**
      * @minLength 1
-     * @maxLength 2000
+     * @maxLength 300
      */
   text: string;
   bookingReference: string;

@@ -13,4 +13,5 @@ export const SmsDeliveryReceiptStatus = {
   sent: 'sent',
   failed: 'failed',
   simulated: 'simulated',
+  skipped: 'skipped',
 } as const;

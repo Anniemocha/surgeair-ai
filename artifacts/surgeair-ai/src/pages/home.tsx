@@ -255,7 +255,7 @@ export function Home() {
 
       {/* Right side: Passenger Device Simulator */}
       <div className="order-1 w-full lg:order-2 lg:w-1/2 xl:w-[45%] min-h-[70dvh] lg:h-[100dvh] overflow-hidden flex flex-col relative bg-muted/30">
-        <SimulatorPanel key={`${dashboard.booking.bookingReference}-${resetVersion}`} dashboard={dashboard} onStatusChange={setConversationStatus} />
+        <SimulatorPanel key={`${dashboard.booking.bookingReference}-${dashboard.orchestration.runtimeSessionId ?? dashboard.orchestration.conversationId}-${resetVersion}`} dashboard={dashboard} onStatusChange={setConversationStatus} />
         {switching && <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/90 backdrop-blur-sm" data-testid="status-switching-passenger">
           <div className="h-6 w-40 animate-pulse rounded-lg bg-muted" />
           <div className="h-52 w-72 animate-pulse rounded-[2rem] bg-muted" />

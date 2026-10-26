@@ -1,3 +1,4 @@
 - [AgentCore secret-free bundling](agentcore-secret-free-bundling.md) — esbuild define only replaces exact env expressions; pass auth mode explicitly and scan the final bundle.
 - [Reset status](reset-status.md) — keep the existing notified flow after Reset Demo; show Awaiting passenger reply, not an extra Start Demo screen.
 - [AWS demo evidence](aws-demo-evidence.md) — AgentCore interprets only; booking authority remains in the API, and readiness must use current-conversation evidence.
+- [Public demo safety](public-demo-safety.md) — mock SMS/SES during verification; resets, cookies and replicas must not renew public-use budgets.

@@ -37,7 +37,7 @@ export function normalizeItineraryChannel(channel: string): Channel {
 }
 
 export function createAirlineTools(store: SurgeAirStore) {
-const registry = new ToolRegistry(new LocalOperationalLogger());
+const registry = new ToolRegistry(new LocalOperationalLogger(), (name, input, output) => store.recordToolCall?.(name, input, output));
 
 registry.register({
   name: "getBooking",

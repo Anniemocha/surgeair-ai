@@ -7,7 +7,8 @@ test("display status follows notification, options, selection, confirmation and 
   assert.equal(demoStatus({ notified: true }), "Awaiting passenger reply");
   assert.equal(demoStatus({ notified: true, optionsShown: true }), "Rebooking in progress");
   assert.equal(demoStatus({ notified: true, selected: true }), "Rebooking in progress");
-  assert.equal(demoStatus({ notified: true, confirmed: true }), "Rebooking in progress");
+  // A confirmed booking stays confirmed even if email is pending or fails.
+  assert.equal(demoStatus({ notified: true, confirmed: true }), "Rebooked");
   assert.equal(demoStatus({ notified: true, confirmed: true, emailDelivered: true }), "Rebooked");
   assert.equal(demoStatus({ notified: true, cancelled: true }), "Rebooking cancelled");
   // Reset clears prior flags. A fresh, already-notified scenario is awaiting a

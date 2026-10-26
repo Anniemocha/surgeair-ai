@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { LIMIT_MESSAGE, reserveDemoUsage } from "../surgeair/demo-limits";
 import {
   GetBookingParams,
   GetBookingResponse,
@@ -55,12 +56,21 @@ const emailTestRateLimiter = new SmsTestRateLimiter(
 router.get("/dashboard", (_req, res) => {
   res.json(GetDashboardResponse.parse(_req.surgeAirStore.getDashboard()));
 });
+async function sendLimitedSms(req: Parameters<typeof reserveDemoUsage>[1], kind: "notification" | "confirmation") {
+  // A database failure must never turn into an unmetered AWS send.
+  return req.surgeAirStore.sendDemoSms(kind, req.surgeAirStore.getSmsProviderMode() === "aws"
+    ? () => reserveDemoUsage("sms", req).catch(() => false)
+    : true);
+}
+
 router.post("/demo/start", async (req, res) => {
   if (!isSameOriginRequest(req)) {
     res.status(403).json({ error: "Cross-site demo requests are not allowed." });
     return;
   }
-  await req.surgeAirStore.sendDemoSms("notification");
+  if (!req.surgeAirStore.getDashboard().smsDeliveries.some(item => item.kind === "notification")) {
+    await sendLimitedSms(req, "notification");
+  }
   res.json(GetDashboardResponse.parse(req.surgeAirStore.getDashboard()));
 });
 
@@ -104,11 +114,23 @@ router.post("/messages/interpret", async (req, res): Promise<void> => {
   }
   const input = InterpretMessageBody.safeParse(req.body);
   if (!input.success) {
-    res.status(400).json({ error: "Text and an active booking reference are required." });
+    res.status(400).json({ error: "Please enter a message of 1–300 characters." });
     return;
   }
+  if (!await reserveDemoUsage("chat", req)) {
+    res.status(429).json({ error: LIMIT_MESSAGE });
+    return;
+  }
+  if (!input.data.text.trim() || /[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(input.data.text)) {
+    res.status(400).json({ error: "Please enter a valid passenger message." }); return;
+  }
+  if (input.data.bookingReference !== req.surgeAirStore.getDashboard().booking.bookingReference) {
+    res.status(404).json({ error: "Booking is not the active session booking." }); return;
+  }
+  req.surgeAirStore.beginPassengerTurn();
+  await createAirlineTools(req.surgeAirStore).execute("getBooking", { bookingReference: input.data.bookingReference });
   const result = await req.surgeAirStore.interpretMessage(
-    input.data.text,
+    input.data.text.trim(),
     input.data.bookingReference,
     input.data.presentedFlightNumbers ?? [],
   );
@@ -119,7 +141,7 @@ router.post("/messages/interpret", async (req, res): Promise<void> => {
   res.json(InterpretMessageResponse.parse(result));
 });
 
-router.post("/demo/reset", (req, res): void => {
+router.post("/demo/reset", async (req, res): Promise<void> => {
   if (!isSameOriginRequest(req)) {
     res.status(403).json({ error: "Cross-site reset requests are not allowed." });
     return;
@@ -134,15 +156,16 @@ router.post("/demo/reset", (req, res): void => {
     res.status(400).json({ error: "Reset Demo does not accept a request body." });
     return;
   }
-  res.json(ResetDemoResponse.parse(req.surgeAirStore.resetDemo()));
+  const result = req.surgeAirStore.resetDemo();
+  await sendLimitedSms(req, "notification");
+  res.json(ResetDemoResponse.parse(result));
 });
 
 router.get("/bookings/:bookingReference", async (req, res) => {
   const { bookingReference } = GetBookingParams.parse(req.params);
-  const booking = await createAirlineTools(req.surgeAirStore).execute<BookingRecord | null>(
-    "getBooking",
-    { bookingReference },
-  );
+  // A dashboard read is not an agent tool invocation and must not overwrite
+  // the last agent tool or append a new tool-call activity.
+  const booking = req.surgeAirStore.getBooking(bookingReference, false);
 
   if (!booking) {
     res.status(404).json({ error: "Booking not found." });
@@ -182,7 +205,12 @@ router.post("/bookings/rebook", async (req, res) => {
     res.status(403).json({ error: "Cross-site booking requests are not allowed." });
     return;
   }
-  const input = RebookFlightBody.parse(req.body);
+  const parsed = RebookFlightBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid booking request." }); return; }
+  const input = parsed.data;
+  if (!await reserveDemoUsage("booking", req)) {
+    res.status(429).json({ error: LIMIT_MESSAGE }); return;
+  }
   const result = await createAirlineTools(req.surgeAirStore).execute<
     ReturnType<SurgeAirStore["rebook"]>
   >("rebookFlight", input);
@@ -193,7 +221,7 @@ router.post("/bookings/rebook", async (req, res) => {
     return;
   }
 
-  const smsDelivery = await req.surgeAirStore.sendDemoSms("confirmation");
+  const smsDelivery = await sendLimitedSms(req, "confirmation");
   res.json(RebookFlightResponse.parse({ ...result, smsDelivery }));
 });
 
@@ -210,7 +238,15 @@ router.post("/bookings/rebook/prepare", async (req, res) => {
 });
 
 router.post("/itinerary/send", async (req, res) => {
-  const input = SendItineraryBody.parse(req.body);
+  if (!isSameOriginRequest(req)) {
+    res.status(403).json({ error: "Cross-site itinerary requests are not allowed." }); return;
+  }
+  const parsed = SendItineraryBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid itinerary request." }); return; }
+  const input = parsed.data;
+  if (!req.surgeAirStore.getDashboard().emailPreview && !await reserveDemoUsage("email", req)) {
+    res.status(429).json({ error: LIMIT_MESSAGE }); return;
+  }
   let result:
     | {
         sent: boolean;
@@ -259,6 +295,9 @@ router.post("/integrations/email/test", async (req, res): Promise<void> => {
   }
 
   try {
+    if (!await reserveDemoUsage("email", req)) {
+      res.status(429).json({ error: LIMIT_MESSAGE }); return;
+    }
     const result = await req.surgeAirStore.sendEmailIntegrationTest();
     res.json(
       TestEmailIntegrationResponse.parse({
@@ -319,6 +358,9 @@ router.post("/integrations/sms/test", async (req, res): Promise<void> => {
   }
 
   try {
+    if (!await reserveDemoUsage("sms", req)) {
+      res.status(429).json({ error: LIMIT_MESSAGE }); return;
+    }
     const result = await req.surgeAirStore.sendSmsSimulatorTest(input.data.message);
     res.json(
       TestSmsIntegrationResponse.parse({

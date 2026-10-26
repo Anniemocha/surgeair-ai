@@ -54,7 +54,7 @@ if (!("booking" in confirmed) || finalFlight !== selectedFlight) {
   throw new Error("Explicit confirmation did not complete the pending rebooking.");
 }
 
-const completedReply = "Your booking has already been updated to SA218.";
+const completedReply = "Your booking SA218 is already confirmed.";
 for (const channel of ["RCS", "SMS", "WhatsApp"] as const) {
   surgeAirStore.selectConversationChannel(channel);
   const beforeDuplicate = surgeAirStore.captureState();

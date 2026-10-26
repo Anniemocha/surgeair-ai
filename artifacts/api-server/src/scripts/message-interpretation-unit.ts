@@ -2,8 +2,10 @@ import { createSurgeAirStore } from "../surgeair/domain";
 
 const store = createSurgeAirStore();
 const reference = "SG4821";
+// Interpretation may update display metadata, never the booking/confirmation.
+const stableState = (source: typeof store) => JSON.stringify(source.captureState(), (key, value) => ["detectedIntent", "updatedAt"].includes(key) ? undefined : value);
 store.searchAlternatives("LIS", "EDI", "18:00");
-const before = JSON.stringify(store.captureState());
+const before = stableState(store);
 
 const clearTime = await store.interpretMessage(
   "I need to arrive before six PM.",
@@ -68,7 +70,7 @@ if (ambiguousTime?.arrivalBefore !== null || !ambiguousTime?.clarification) {
 if (await store.interpretMessage("Find a flight.", "SG5102")) {
   throw new Error("Interpretation accepted a booking other than the active booking.");
 }
-if (JSON.stringify(store.captureState()) !== before) {
+if (stableState(store) !== before) {
   throw new Error("Interpretation modified conversation or booking state.");
 }
 const sg9562 = createSurgeAirStore();
@@ -90,7 +92,7 @@ const soleFlight = single.searchAlternatives("LIS", "EDI", "15:00");
 if (soleFlight.length !== 1 || soleFlight[0]?.flightNumber !== "SA218") {
   throw new Error("The single suitable alternative must be SA218.");
 }
-const singleBeforeInterpretation = JSON.stringify(single.captureState());
+const singleBeforeInterpretation = stableState(single);
 const accepted = await single.interpretMessage(
   "That works for me.", reference, ["SA218", "SA218"],
 );
@@ -101,7 +103,7 @@ const unavailable = await single.interpretMessage("Book SA226 instead.", referen
 if (unavailable?.selectedFlight !== null || !unavailable.clarification) {
   throw new Error("An alternative excluded by the actual search was accepted.");
 }
-if (JSON.stringify(single.captureState()) !== singleBeforeInterpretation) {
+if (stableState(single) !== singleBeforeInterpretation) {
   throw new Error("Accepting a single option must not mutate the booking or confirmation.");
 }
 const singlePending = single.prepareRebooking(reference, accepted.selectedFlight);
@@ -118,7 +120,7 @@ const afterCompletion = JSON.stringify(single.captureState());
 const duplicateSearch = await single.interpretMessage(
   "Find another flight before 18:00.", reference, ["SA218"],
 );
-if (duplicateSearch?.clarification !== "Your booking has already been updated to SA218." ||
+if (duplicateSearch?.clarification !== "Your booking SA218 is already confirmed." ||
     single.searchAlternatives("LIS", "EDI", "18:00").length !== 0 ||
     JSON.stringify(single.captureState()) !== afterCompletion) {
   throw new Error("A completed booking restarted the alternatives flow.");

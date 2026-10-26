@@ -293,7 +293,7 @@ export function DashboardPanel({ dashboard, headerAction, displayStatus }: Dashb
 
                 <div className="space-y-1 col-span-2">
                   <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold">Current Intent</p>
-                  <p className="text-[11px] font-medium truncate" data-testid="text-current-intent">{orchestration.currentIntent || 'Processing...'}</p>
+                  <p className="text-[11px] font-medium truncate" data-testid="text-current-intent">{orchestration.currentIntent || 'Awaiting passenger reply'}</p>
                 </div>
 
                 <div className="space-y-1 col-span-2">
@@ -412,6 +412,18 @@ export function DashboardPanel({ dashboard, headerAction, displayStatus }: Dashb
             </CardContent>
           </Card>
 
+          <details className="rounded-xl border border-border/50 bg-card px-4 py-3" data-testid="tool-calls">
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tool calls</summary>
+            <ul className="mt-3 space-y-2 text-xs">
+              {activities.filter(activity => activity.label.startsWith("Tool call: ")).map(activity => <li key={activity.id}>
+                <strong>{activity.label.slice("Tool call: ".length)}</strong>
+                <span className="ml-2 text-[10px] text-muted-foreground">{displayTime(activity.timestamp)}</span>
+                <p className="break-words text-muted-foreground">{activity.detail}</p>
+              </li>)}
+              {!activities.some(activity => activity.label.startsWith("Tool call: ")) && <li className="text-muted-foreground">No tools called in this run.</li>}
+            </ul>
+          </details>
+
           {/* Activity Timeline */}
           <Card className="shadow-sm border-0 bg-card">
             <CardHeader className="pb-3 pt-4 border-b border-border/50 bg-muted/30 flex flex-row items-center justify-between">
@@ -429,7 +441,7 @@ export function DashboardPanel({ dashboard, headerAction, displayStatus }: Dashb
             </CardHeader>
             <CardContent className="pt-6 pb-6">
               <div className="relative border-l-2 border-muted ml-3 space-y-6">
-                {activities.map((activity: Activity, i: number) => (
+                {activities.filter(activity => !activity.label.startsWith("Tool call: ")).map((activity: Activity, i: number) => (
                   <div key={activity.id} className="relative pl-6" data-testid={`timeline-activity-${i}`}>
                     <div className={`absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-[3px] border-card ${
                       activity.status === 'COMPLETED' ? 'bg-primary' :

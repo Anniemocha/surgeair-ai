@@ -95,7 +95,7 @@ paths:
       operationId: interpretMessage
       tags: [surgeair]
       summary: Interpret passenger text without receiving a channel message or taking action
-      description: Uses the active session booking for context. Presented flight numbers are only hints and are accepted only when they match available alternatives on that booking's route. This endpoint never sends outbound messages or performs rebooking.
+      description: Uses the active session booking for context. Presented flight numbers are only hints and are accepted only when they match available alternatives on that booking's route. This endpoint never sends outbound messages or performs rebooking. Passenger text is limited to 300 characters.
       requestBody:
         required: true
         content:
@@ -399,7 +399,7 @@ components:
         text:
           type: string
           minLength: 1
-          maxLength: 2000
+          maxLength: 300
         bookingReference: { type: string }
         presentedFlightNumbers:
           type: array
@@ -507,7 +507,7 @@ components:
       required: [kind, status, messageId, timestamp]
       properties:
         kind: { type: string, enum: [notification, confirmation] }
-        status: { type: string, enum: [sent, failed, simulated] }
+        status: { type: string, enum: [sent, failed, simulated, skipped] }
         messageId: { type: ["string", "null"] }
         timestamp: { type: string }
     IntegrationReadiness:

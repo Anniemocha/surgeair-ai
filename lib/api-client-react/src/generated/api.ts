@@ -488,7 +488,7 @@ export const getInterpretMessageUrl = () => {
 }
 
 /**
- * Uses the active session booking for context. Presented flight numbers are only hints and are accepted only when they match available alternatives on that booking's route. This endpoint never sends outbound messages or performs rebooking.
+ * Uses the active session booking for context. Presented flight numbers are only hints and are accepted only when they match available alternatives on that booking's route. This endpoint never sends outbound messages or performs rebooking. Passenger text is limited to 300 characters.
  * @summary Interpret passenger text without receiving a channel message or taking action
  */
 export const interpretMessage = async (messageInterpretationInput: MessageInterpretationInput, options?: Parameters<typeof customFetch>[1]): Promise<MessageInterpretation> => {

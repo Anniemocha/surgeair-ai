@@ -81,7 +81,7 @@ export interface ConversationChannelState {
 export interface MessageInterpretationInput {
   /**
      * @minLength 1
-     * @maxLength 2000
+     * @maxLength 300
      */
   text: string;
   bookingReference: string;
@@ -156,6 +156,7 @@ export const SmsDeliveryReceiptStatus = {
   sent: 'sent',
   failed: 'failed',
   simulated: 'simulated',
+  skipped: 'skipped',
 } as const;
 
 export interface SmsDeliveryReceipt {

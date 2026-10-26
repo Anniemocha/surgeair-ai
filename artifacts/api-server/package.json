@@ -8,7 +8,7 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "test": "pnpm run test:channels && pnpm run test:safety && pnpm run test:itinerary-channel && pnpm run test:passengers && pnpm run test:interpret-message && pnpm run test:sms && pnpm run test:ses && pnpm run test:readiness && pnpm run test:reset && pnpm run test:aws-demo",
+    "test": "pnpm run test:public-demo && pnpm run test:channels && pnpm run test:safety && pnpm run test:itinerary-channel && pnpm run test:passengers && pnpm run test:interpret-message && pnpm run test:sms && pnpm run test:ses && pnpm run test:readiness && pnpm run test:reset && pnpm run test:aws-demo",
     "test:aws-demo": "esbuild src/scripts/aws-demo-unit.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/aws-demo-unit.mjs && node --enable-source-maps dist/aws-demo-unit.mjs",
     "test:channels": "export MODEL_PROVIDER=local && esbuild src/scripts/channel-routing-unit.ts --bundle --platform=node --format=esm --packages=external --alias:@workspace/api-zod=../../lib/api-zod/src/index.ts --alias:zod=../../lib/api-zod/node_modules/zod --outfile=dist/channel-routing-unit.mjs && node --enable-source-maps dist/channel-routing-unit.mjs",
     "test:bedrock": "esbuild src/scripts/bedrock-connectivity.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/bedrock-connectivity.mjs && node --enable-source-maps dist/bedrock-connectivity.mjs",
@@ -19,7 +19,8 @@
     "test:sms": "esbuild src/scripts/aws-sms-provider-unit.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/aws-sms-provider-unit.mjs && node --enable-source-maps dist/aws-sms-provider-unit.mjs",
     "test:ses": "esbuild src/scripts/aws-ses-provider-unit.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/aws-ses-provider-unit.mjs && node --enable-source-maps dist/aws-ses-provider-unit.mjs",
     "test:readiness": "esbuild src/scripts/readiness-unit.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/readiness-unit.mjs && node --enable-source-maps dist/readiness-unit.mjs",
-    "test:reset": "esbuild src/scripts/reset-session-unit.ts --bundle --platform=node --format=esm --packages=external --alias:@workspace/api-zod=../../lib/api-zod/src/index.ts --alias:zod=../../lib/api-zod/node_modules/zod --outfile=dist/reset-session-unit.mjs && node --enable-source-maps dist/reset-session-unit.mjs",
+    "test:reset": "esbuild src/scripts/reset-session-unit.ts --bundle --platform=node --format=esm --packages=external --alias:@workspace/db=./src/scripts/demo-db-mock.ts --alias:@workspace/api-zod=../../lib/api-zod/src/index.ts --alias:zod=../../lib/api-zod/node_modules/zod --outfile=dist/reset-session-unit.mjs && node --enable-source-maps dist/reset-session-unit.mjs",
+    "test:public-demo": "esbuild src/scripts/public-demo-unit.ts --bundle --platform=node --format=esm --packages=external --alias:@workspace/db=./src/scripts/demo-db-mock.ts --alias:@workspace/api-zod=../../lib/api-zod/src/index.ts --alias:zod=../../lib/api-zod/node_modules/zod --outfile=dist/public-demo-unit.mjs && node dist/public-demo-unit.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

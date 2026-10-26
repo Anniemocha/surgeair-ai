@@ -80,6 +80,10 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
   
   // Conversation state machine
   const [isTyping, setIsTyping] = useState(false);
+  const sending = useRef(false);
+  const [retryText, setRetryText] = useState<string | null>(null);
+  const [retryEmail, setRetryEmail] = useState(false);
+  const skippedSms = useRef(new Set<string>());
   const [awaitingRequirement, setAwaitingRequirement] = useState(
     dashboard.orchestration.currentAgentState === "Disruption detected" ||
       dashboard.orchestration.currentAgentState === "Booking retrieved",
@@ -121,17 +125,8 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
   const lastAiIndex = messages.findLastIndex(message => message.sender !== "passenger");
   const firstAiIndex = messages.findIndex(message => message.sender !== "passenger");
   const startDemo = useStartDemo();
-  useEffect(() => {
-    let active = true;
-    startDemo.mutateAsync().then(result => {
-      if (!active) return;
-      setSmsDeliveries(result.smsDeliveries ?? []);
-      void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
-    }).catch(() => {
-      if (active) setSmsDeliveries([{ kind: "notification", status: "failed", messageId: null, timestamp: new Date().toISOString() }]);
-    });
-    return () => { active = false; };
-  }, [startDemo.mutateAsync, queryClient]);
+  // Mounting the demo is read-only. The first deliberate message or Reset Demo
+  // sends the notification; page loads, previews and HMR never do.
   useEffect(() => {
     if (dashboard.smsDeliveries) setSmsDeliveries(dashboard.smsDeliveries);
   }, [dashboard.smsDeliveries]);
@@ -148,7 +143,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
       selected: !!awaitingConfirmationFor,
       confirmed: rebookSuccess || dashboard.actionStatus === "Rebooked",
       emailDelivered,
-      cancelled: /won't rebook|rebooking cancelled/i.test(lastAgentMessage?.text ?? ""),
+      cancelled: /won't rebook|rebooking cancelled|haven't changed your booking/i.test(lastAgentMessage?.text ?? ""),
     }));
   }, [messages, showingOptions, awaitingConfirmationFor, rebookSuccess, emailDelivered, dashboard.actionStatus, onStatusChange]);
 
@@ -194,8 +189,15 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
 
   const handleSend = async (textOverride?: string) => {
     const textToUse = textOverride || inputValue;
-    if (!textToUse.trim() || isTyping || selectConversationChannel.isPending) return;
+    if (!textToUse.trim() || isTyping || sending.current || selectConversationChannel.isPending) return;
+    if (textToUse.trim().length > 300) {
+      addMessage("Please keep your message under 300 characters.", "ai");
+      return;
+    }
     
+    sending.current = true;
+    try {
+    setRetryText(null);
     const userText = textToUse.trim();
     if (!textOverride) setInputValue("");
     
@@ -203,14 +205,20 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
     setIsTyping(true);
     let decision: Awaited<ReturnType<typeof interpretMessage.mutateAsync>>;
     try {
+      if (!smsDeliveries.some(receipt => receipt.kind === "notification")) {
+        const started = await startDemo.mutateAsync();
+        setSmsDeliveries(started.smsDeliveries ?? []);
+      }
       decision = await interpretMessage.mutateAsync({ data: {
         text: userText,
         bookingReference: dashboard.booking.bookingReference,
         presentedFlightNumbers: showingOptions ? alternativeFlights.map(flight => flight.flightNumber) : [],
       } });
       await queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
-    } catch {
-      addMessage("I couldn't interpret your message right now. Please try again.", "ai");
+    } catch (error) {
+      const limited = error instanceof Error && /Demo limit reached|429/.test(error.message);
+      addMessage(limited ? "Demo limit reached, please try again later" : "I couldn't process that message right now. Tap Retry to try again.", "ai");
+      if (!limited) setRetryText(userText);
       setIsTyping(false);
       return;
     }
@@ -240,6 +248,14 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
           });
 
           setConfirmedBooking(result.booking);
+          queryClient.setQueryData(getGetBookingQueryKey(result.booking.bookingReference), result.booking);
+          queryClient.setQueryData<Dashboard>(getGetDashboardQueryKey(), current => current ? {
+            ...current, booking: result.booking, actionStatus: result.actionStatus,
+            confirmationStatus: "Confirmed",
+            orchestration: { ...current.orchestration, currentAgentState: "Booking confirmed",
+              currentIntent: "Confirm rebooking", lastToolCalled: "rebookFlight" },
+          } : current);
+          void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
           if (result.smsDelivery) setSmsDeliveries(previous => [...previous.filter(receipt => receipt.kind !== "confirmation"), result.smsDelivery!]);
           const confirmationId = addMessage(confirmationSummary(result.booking), 'ai');
            setAwaitingConfirmationFor(null);
@@ -256,8 +272,10 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
                setMessages(previous => previous.map(message => message.id === confirmationId
                  ? { ...message, text: `${confirmationSummary(result.booking)} ${itineraryDeliverySummary(sent)}`, timestamp: new Date().toISOString() }
                  : message));
-             } catch {
-               addMessage("Your flight is confirmed, but the itinerary email could not be sent. Please contact support for a copy.", "ai");
+             } catch (error) {
+               const limited = error instanceof Error && /Demo limit reached|429/.test(error.message);
+               addMessage(limited ? "Demo limit reached, please try again later" : "Your flight is confirmed, but the itinerary email could not be sent. Tap Retry email to try again.", "ai");
+               if (!limited) setRetryEmail(true);
              } finally {
                await Promise.all([
                  queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
@@ -268,15 +286,18 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
              }
           }, 1000);
 
-        } catch (e) {
-          addMessage("Sorry, there was an error processing your rebooking. Please try again.", 'ai');
+        } catch (error) {
+          const limited = error instanceof Error && /Demo limit reached|429/.test(error.message);
+          addMessage(limited ? "Demo limit reached, please try again later" : "I couldn't confirm that booking. Tap Retry to try again.", "ai");
+          if (!limited) setRetryText(userText);
         }
       setIsTyping(false);
       return;
     }
     if (awaitingConfirmationFor && /^(?:no|cancel)(?:[!.,\s]|$)/i.test(userText)) {
-        addMessage("Okay, I won't rebook you on that flight. Would you like to see other options?", 'ai');
+        addMessage("No problem, I haven't changed your booking. Want to see other options?", 'ai');
         setAwaitingConfirmationFor(null);
+        setShowingOptions(true);
         setAwaitingRequirement(true);
         setIsTyping(false);
         return;
@@ -311,7 +332,8 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
           addMessage(`You've selected ${selected.flightNumber}. Shall I go ahead and confirm this rebooking for you? Reply YES or CONFIRM.`, "ai");
           await queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
         } catch {
-          addMessage("Sorry, I couldn't prepare that flight for confirmation. Please choose another option.", "ai");
+          addMessage("I couldn't prepare that flight for confirmation. Your booking is unchanged. Tap Retry to try again.", "ai");
+          setRetryText(userText);
         }
         return;
       }
@@ -388,8 +410,42 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
       }
       await queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
     } catch {
-      addMessage("I couldn't check flight availability right now. Your booking has not changed; please try again.", "ai");
+      addMessage("I couldn't check flight availability right now. Your booking has not changed. Tap Retry to try again.", "ai");
+      setRetryText(userText);
     } finally {
+      setIsTyping(false);
+    }
+    } finally {
+      sending.current = false;
+    }
+  };
+
+  useEffect(() => {
+    for (const receipt of smsDeliveries) {
+      const key = `${receipt.kind}:${receipt.timestamp}`;
+      if (receipt.status === "skipped" && !skippedSms.current.has(key)) {
+        skippedSms.current.add(key);
+        addMessage("Demo limit reached, please try again later", "ai");
+      }
+    }
+  }, [smsDeliveries]);
+
+  const retryEmailDelivery = async () => {
+    if (sending.current || isTyping) return;
+    sending.current = true;
+    setIsTyping(true);
+    try {
+      const sent = await sendItinerary.mutateAsync({ data: { bookingReference: dashboard.booking.bookingReference, channel: "EMAIL" } });
+      setEmailPreview(sent.emailPreview);
+      setRetryEmail(false);
+      addMessage(itineraryDeliverySummary(sent), "ai");
+      await queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+    } catch (error) {
+      const limited = error instanceof Error && /Demo limit reached|429/.test(error.message);
+      addMessage(limited ? "Demo limit reached, please try again later" : "The email is still unavailable. Your booking is confirmed; you can retry later.", "ai");
+      if (limited) setRetryEmail(false);
+    } finally {
+      sending.current = false;
       setIsTyping(false);
     }
   };
@@ -621,8 +677,11 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
 
         {/* Input Area */}
         {!emailOpen && <div className="shrink-0 p-3 bg-background/95 backdrop-blur-md border-t border-border/50 pb-6 flex flex-col gap-3 z-40 relative">
+          {retryText && !isTyping && <Button size="sm" variant="outline" data-testid="btn-chat-retry" onClick={() => void handleSend(retryText)}>Retry</Button>}
+          {retryEmail && !isTyping && <Button size="sm" variant="outline" data-testid="btn-email-retry" onClick={() => void retryEmailDelivery()}>Retry email</Button>}
           <div className="relative flex items-center">
             <Input
+              maxLength={300}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => {
@@ -639,7 +698,7 @@ export function SimulatorPanel({ dashboard, onStatusChange }: SimulatorPanelProp
             <Button 
               size="icon" 
               className="absolute right-1.5 h-8 w-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-transform active:scale-95"
-              onClick={() => void handleSend()}
+                  onClick={() => void handleSend()}
                disabled={!inputValue.trim() || isTyping || selectConversationChannel.isPending}
               data-testid="btn-send-message"
               aria-label="Send message"

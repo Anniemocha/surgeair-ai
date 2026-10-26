@@ -6,6 +6,16 @@
 
 This is the Replit-hosted hackathon deployment.
 
+## How to try it
+
+Open **https://surge-air-ai-mvp.replit.app/**, tap **Arrive before 18:00**, pick a flight, and confirm. Open the **Email** tab to preview the itinerary, then press **Reset Demo** to try again. Opening or refreshing the page does not send SMS. The first deliberate chat interaction starts the run; Reset Demo intentionally starts a fresh run.
+
+## Public demo safeguards
+
+The server enforces rolling limits: 20 chat messages per minute and 100 per 24 hours per IP; five booking confirmations and five email send attempts per hour per IP; three SMS attempts per hour per IP and 30 SMS attempts per 24 hours across the whole demo. Counters are shared in PostgreSQL, so restarting or scaling the server does not reset the budget. IP addresses are stored only as keyed hashes; usage records older than 24 hours are pruned. Limits never prevent Reset Demo, and an SMS limit skips AWS while preserving the in-app notification and booking flow. Both client and server cap passenger messages at 300 characters. Requests time out after 45 seconds and offer a friendly retry; provider exceptions are not returned to visitors.
+
+Message → server-side AgentCore invocation (currently using direct Bedrock fallback when unavailable) → grounded intent → local airline tools → explicit passenger confirmation → server-side SMS/SES adapters → chat reply and email preview. Transport receipts, not chat bubbles, are evidence of AWS invocation. UI and automated tests use injected AWS clients or simulated providers; they must never send real SMS or email.
+
 SurgeAir AI is an agentic, omnichannel airline passenger-assistance system built for the AWS Communication Developer Services hackathon. It helps a passenger recover from a flight disruption while preserving context across channels and keeping consequential booking actions behind an explicit-confirmation gate.
 
 The demonstration focuses on one disruption and rebooking journey:
@@ -497,16 +507,17 @@ These are boundaries of the current hackathon implementation:
 - SMS uses the AWS Simulator rather than carrier delivery.
 - Integration Readiness uses evidence from the current conversation only. Historical verification does not mark a service invoked.
 - Conversation and event state use controlled in-memory demonstration data.
+- The current publication is Autoscale: it can scale to zero when idle. Reserved VM is the continuously-running option. Quota counters persist in PostgreSQL, but visitor conversation state is not yet shared between instances.
 - Airline inventory and booking records are controlled demonstration data.
 - No production airline reservation-system integration is claimed.
 
 ## Notes for judges
 
-The browser retains the same demo booking sequence and presentation. The following describes the actual execution paths, not historical verification badges:
+The browser retains the same demo booking sequence and presentation. SMS goes only to configured AWS simulator numbers. WhatsApp and RCS are simulated UI channels. Email runs in the SES sandbox with a fixed verified recipient and is previewed in the app. Flight and hotel data are mocked, not live inventory. The AgentCore runtime is configured, but the demo currently uses the direct Bedrock fallback when that runtime cannot handle the request; the per-turn orchestration history is authoritative. The following describes the actual execution paths, not historical verification badges:
 
 | Component | Real call or simulation? |
 | --- | --- |
-| Disruption notification and booking confirmation SMS | The server calls AWS End User Messaging `SendTextMessage` using the configured simulator destination. AWS MessageIds are retained in the conversation and shown in SMS details and the operations log. This is simulator API acceptance, **not delivery to a physical handset**. Failures are displayed and do not stop booking. Other chat bubbles are locally rendered and do not send SMS. |
+| Disruption notification and booking confirmation SMS | Only deliberate start/reset and booking confirmation can call server-side AWS End User Messaging `SendTextMessage`, subject to the shared SMS budget. Limit hits log `SMS skipped: demo limit` and preserve the chat content. AWS MessageIds appear in SMS details and the operations log. This is simulator API acceptance, **not delivery to a physical handset**. Failures do not stop booking. Other bubbles are locally rendered and do not send SMS. |
 | Passenger-message interpretation | Each user message, including confirmation/cancellation, goes through `InvokeAgentRuntime` when `AGENTCORE_RUNTIME_ARN` is configured. The runtime must run the interpretation-only protocol in `src/agentcore/app.ts`; its Bedrock model interprets the message without executing booking actions. The same runtime session ID is used within one conversation and is replaced on Reset Demo or passenger change. |
 | Direct Amazon Bedrock fallback | If AgentCore is missing, errors, times out, or returns an incompatible response, the server automatically calls the existing direct Bedrock `Converse` path. If Bedrock also fails, the existing local interpretation fallback is explicitly reported as local. Orchestration and per-turn logs identify the path and runtime session ID. |
 | Itinerary email | After successful rebooking, the server calls Amazon SES `SendEmail` using the configured sender and fixed sandbox recipient. The preview shows the actual email body, masked addresses, and the returned SES MessageId. Acceptance is not proof of inbox delivery. |
@@ -516,7 +527,7 @@ The browser retains the same demo booking sequence and presentation. The followi
 
 Integration Readiness starts at **Configured**, **Not invoked yet**, or **Simulated**. A service changes to **Invoked** with its first successful invocation timestamp in this conversation; reset clears that evidence. No badge is proof of a physical SMS or inbox delivery.
 
-When AgentCore fails but the direct Bedrock call succeeds, its readiness card says **Configured, fallback active**. Exact runtime error details are available only under **AI Agent Orchestration → Execution details**. See [the runtime contract, manual deployment commands, and scoped deployment permissions](docs/agentcore-runtime-update.md).
+When AgentCore fails but the direct Bedrock call succeeds, its readiness card says **Configured, fallback active**. The orchestration panel shows the execution path and a safe failure summary, not raw provider exceptions or stack traces. See [the runtime contract, manual deployment commands, and scoped deployment permissions](docs/agentcore-runtime-update.md).
 
 ### AgentCore and SMS prerequisites
 

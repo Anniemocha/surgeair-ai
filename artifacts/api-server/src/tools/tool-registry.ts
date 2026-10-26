@@ -14,7 +14,10 @@ export interface AgentTool<TInput, TOutput> {
 export class ToolRegistry {
   private readonly tools = new Map<string, AgentTool<unknown, unknown>>();
 
-  constructor(private readonly logger: OperationalLogger) {}
+  constructor(
+    private readonly logger: OperationalLogger,
+    private readonly onResult?: (name: string, input: unknown, output: unknown) => void,
+  ) {}
 
   register<TInput, TOutput>(tool: AgentTool<TInput, TOutput>) {
     this.tools.set(
@@ -30,7 +33,9 @@ export class ToolRegistry {
     }
     this.logger.record("tool_call", { tool: name });
     const validated = tool.inputSchema.parse(input);
-    return (await tool.execute(validated)) as TOutput;
+    const output = await tool.execute(validated);
+    this.onResult?.(name, validated, output);
+    return output as TOutput;
   }
 
   describe() {

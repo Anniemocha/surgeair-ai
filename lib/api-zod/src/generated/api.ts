@@ -76,7 +76,7 @@ export const GetDashboardResponse = zod.object({
 }).optional(),
   "smsDeliveries": zod.array(zod.object({
   "kind": zod.enum(['notification', 'confirmation']),
-  "status": zod.enum(['sent', 'failed', 'simulated']),
+  "status": zod.enum(['sent', 'failed', 'simulated', 'skipped']),
   "messageId": zod.string().nullable(),
   "timestamp": zod.string()
 })).optional(),
@@ -172,10 +172,10 @@ export const SelectConversationChannelResponse = zod.object({
 
 
 /**
- * Uses the active session booking for context. Presented flight numbers are only hints and are accepted only when they match available alternatives on that booking's route. This endpoint never sends outbound messages or performs rebooking.
+ * Uses the active session booking for context. Presented flight numbers are only hints and are accepted only when they match available alternatives on that booking's route. This endpoint never sends outbound messages or performs rebooking. Passenger text is limited to 300 characters.
  * @summary Interpret passenger text without receiving a channel message or taking action
  */
-export const interpretMessageBodyTextMax = 2000;
+export const interpretMessageBodyTextMax = 300;
 
 export const interpretMessageBodyPresentedFlightNumbersItemRegExp = new RegExp('^[Ss][Aa][0-9]{3}$');
 export const interpretMessageBodyPresentedFlightNumbersMax = 20;
@@ -259,7 +259,7 @@ export const StartDemoResponse = zod.object({
 }).optional(),
   "smsDeliveries": zod.array(zod.object({
   "kind": zod.enum(['notification', 'confirmation']),
-  "status": zod.enum(['sent', 'failed', 'simulated']),
+  "status": zod.enum(['sent', 'failed', 'simulated', 'skipped']),
   "messageId": zod.string().nullable(),
   "timestamp": zod.string()
 })).optional(),
@@ -397,7 +397,7 @@ export const RebookFlightBody = zod.object({
 export const RebookFlightResponse = zod.object({
   "smsDelivery": zod.object({
   "kind": zod.enum(['notification', 'confirmation']),
-  "status": zod.enum(['sent', 'failed', 'simulated']),
+  "status": zod.enum(['sent', 'failed', 'simulated', 'skipped']),
   "messageId": zod.string().nullable(),
   "timestamp": zod.string()
 }).optional(),

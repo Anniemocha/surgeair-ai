@@ -7,7 +7,6 @@ ZIP="${1:-artifacts/api-server/agentcore-output/surgeair-agentcore.zip}"
 PROFILE="${2:-}"
 REGION="eu-north-1"
 RUNTIME_ID="surgeair_ai_agent-YzOD6XHzSm"
-BUCKET="bedrock-agentcore-runtime-661406599883-eu-north-1-1ihjkds6uu"
 for tool in aws jq sha256sum; do command -v "$tool" >/dev/null || { echo "Missing command: $tool" >&2; exit 1; }; done
 test -f "$ZIP" || { echo "ZIP not found: $ZIP" >&2; exit 1; }
 AWS_ARGS=(--region "$REGION" --no-cli-pager)
@@ -23,6 +22,7 @@ aws_cli bedrock-agentcore-control get-agent-runtime \
 jq -e '.agentRuntimeArtifact.codeConfiguration.runtime == "NODE_22"
   and .agentRuntimeArtifact.codeConfiguration.entryPoint == ["app.js"]' \
   "$WORK/current.json" >/dev/null || { echo "Unexpected runtime configuration; stopped." >&2; exit 1; }
+BUCKET="$(jq -er '.agentRuntimeArtifact.codeConfiguration.code.s3.bucket | select(type == "string" and length > 0)' "$WORK/current.json")"
 aws_cli bedrock-agentcore-control update-agent-runtime \
   --generate-cli-skeleton input > "$WORK/skeleton.json"
 HASH="$(sha256sum "$ZIP" | cut -d ' ' -f 1)"

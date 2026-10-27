@@ -10,7 +10,7 @@ out-tsc
 .expo-shared
 
 # dependencies
-node_modules
+node_modules/
 
 # IDEs and editors
 /.idea
@@ -54,7 +54,8 @@ Thumbs.db
 attached_assets/Pasted-*.txt
 /artifacts/api-server/agentcore-output/
 
-# Local environment files; keep the placeholder template tracked
+# Local environment files and private deployment bundles
 .env
 .env.*
-!.env.example
+deploy-files/
+*.zip

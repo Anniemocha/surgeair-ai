@@ -4,11 +4,11 @@
 
 **Live Demo:** [https://surge-air-ai-mvp.replit.app](https://surge-air-ai-mvp.replit.app)
 
-This is the Replit-hosted hackathon deployment.
+This is the Replit-hosted deployment.
 
 ## How to try it
 
-Open **https://surge-air-ai-mvp.replit.app/**, tap **Arrive before 18:00**, pick a flight, and confirm. Open the **Email** tab to preview the itinerary, then press **Reset Demo** to try again. Opening or refreshing the page does not send SMS. The first deliberate chat interaction starts the run; Reset Demo intentionally starts a fresh run.
+Open **https://surge-air-ai-mvp.replit.app/**, tap **Arrive before 18:00**, pick a flight, and confirm. Open the **Email** tab to preview the itinerary, then press **Reset Demo** to try again. Opening or refreshing the page does not send SMS. The first deliberate chat interaction starts the run; Reset Demo intentionally starts a fresh run. The passenger explore contains other simulated passenger details that can be tested for the demo.
 
 ## Public demo safeguards
 
@@ -210,10 +210,9 @@ The passenger does not need to repeat the booking reference or previous constrai
 
 The operations dashboard exposes backend-managed readiness states:
 
-- `CONNECTED`
+- `CONFIGURED`
 - `SIMULATED`
-- `NOT VERIFIED`
-- `ERROR`
+- `INVOKED`
 
 Readiness is not only cosmetic frontend state. The API server initializes from committed backend evidence for integrations that were genuinely verified before the hackathon deployment. Loading this evidence does not perform a new AWS operation or fabricate a verification timestamp.
 
@@ -372,7 +371,7 @@ The current reference deployment **simulates WhatsApp and RCS**. It does not cla
 | Public SurgeAir demo | Self-hosted developer instance |
 | --- | --- |
 | Uses SurgeAir's deployed AWS-backed demo environment | Uses the developer's own AWS account |
-| Requires no AWS credentials from judges or users | Requires private credential-provider configuration |
+| Requires no AWS credentials from users | Requires private credential-provider configuration |
 | Requires no personal phone or email setup | Uses the developer's own Bedrock, SMS, and SES resources |
 | Does not expose infrastructure replacement through the UI | Is controlled through the developer's private environment configuration |
 
@@ -408,14 +407,11 @@ AWS_REGION
 BEDROCK_MODEL_ID
 BEDROCK_VERIFIED
 AGENTCORE_VERIFIED
-AGENTCORE_RUNTIME_NAME
 MODEL_PROVIDER
 CONVERSATION_TABLE_NAME
 SMS_PROVIDER
 SMS_VERIFIED
 AWS_SMS_ENABLED
-AWS_SMS_ORIGINATION_NUMBER
-AWS_SMS_SIMULATOR_DESTINATION
 SMS_TEST_TOKEN
 SMS_TEST_MIN_INTERVAL_MS
 AWS_WHATSAPP_ENABLED
@@ -436,6 +432,9 @@ AWS_SECRET_ACCESS_KEY
 AWS_BEARER_TOKEN_BEDROCK
 SMS_TEST_TOKEN
 SESSION_SECRET
+AGENTCORE_RUNTIME_NAME
+AWS_SMS_ORIGINATION_NUMBER
+AWS_SMS_SIMULATOR_DESTINATION
 ```
 
 Configuration names such as `AWS_REGION`, `BEDROCK_MODEL_ID`, `MODEL_PROVIDER`, `SMS_PROVIDER`, `AWS_SMS_ORIGINATION_NUMBER`, `AWS_SMS_SIMULATOR_DESTINATION`, `SMS_TEST_MIN_INTERVAL_MS`, `EMAIL_PROVIDER`, `AWS_SES_FROM_EMAIL`, and `AWS_SES_TEST_DESTINATION` are not credentials, but their values should still be managed outside the frontend. Do not place real phone numbers or email addresses in documentation.
@@ -511,7 +510,7 @@ These are boundaries of the current hackathon implementation:
 - Airline inventory and booking records are controlled demonstration data.
 - No production airline reservation-system integration is claimed.
 
-## Notes for judges
+## Notes for users
 
 The browser retains the same demo booking sequence and presentation. SMS goes only to configured AWS simulator numbers. WhatsApp and RCS are simulated UI channels. Email runs in the SES sandbox with a fixed verified recipient and is previewed in the app. Flight and hotel data are mocked, not live inventory. The AgentCore runtime is configured, but the demo currently uses the direct Bedrock fallback when that runtime cannot handle the request; the per-turn orchestration history is authoritative. The following describes the actual execution paths, not historical verification badges:
 
@@ -538,7 +537,7 @@ When AgentCore fails but the direct Bedrock call succeeds, its readiness card sa
 
 ## Future Development
 
-Potential next steps include:
+Potential next steps may include:
 
 - live AWS End User Messaging Social / WhatsApp integration
 - live RCS provisioning
@@ -549,7 +548,7 @@ Potential next steps include:
 - expanded disruption workflows
 - production deployment architecture
 
-## Hackathon Value
+## Value
 
 SurgeAir combines conversational AI, communications infrastructure, persistent context, tool execution, and explicit-action safety into a practical passenger recovery experience.
 
@@ -572,7 +571,7 @@ Demo video: Coming soon
 
 ### Resetting the Demo
 
-Judges can use **Reset Demo** in the operations header to restore SG4821 to
+Users can use **Reset Demo** in the operations header to restore SG4821 to
 the original delayed SA204 disruption and replay the demonstration. Reset is
 limited to the current browser session, preserves AWS integration readiness,
 and does not invoke external AWS services.

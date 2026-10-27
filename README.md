@@ -567,7 +567,7 @@ Use the published Replit-hosted deployment to demonstrate the canonical flow:
 5. Confirm the rebooking.
 6. Show the final SA218 itinerary, readiness dashboard, operations log, and email delivery state.
 
-Demo video: Coming soon
+Demo video link: https://youtu.be/3PZeRoLv6ZM?feature=shared
 
 ### Resetting the Demo
 

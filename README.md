@@ -337,7 +337,7 @@ The reference deployment uses Bedrock AgentCore Runtime with runtime name `surge
 
 ### AWS End User Messaging SMS
 
-The reference deployment uses the AWS End User Messaging SMS API with the **AWS SMS Simulator**. It does not demonstrate physical Nigerian carrier delivery.
+The reference deployment uses the AWS End User Messaging SMS API with the **AWS SMS Simulator**. It does not demonstrate physical carrier delivery.
 
 For a self-hosted instance:
 
